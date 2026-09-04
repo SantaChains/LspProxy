@@ -121,7 +121,26 @@ require('lspconfig').rust_analyzer.setup({
 
 ### VSCode
 
-`server.path` 仅接受单个可执行文件，需用 wrapper 脚本。以下脚本优先使用脚本同目录的 `LspProxy`，其次依赖 `PATH`。
+`server.path` 仅接受单个可执行文件，不支持传参。Windows 上推荐使用**重命名二进制**方案（无需任何 wrapper 脚本，最稳定）：
+
+**方案 A（推荐，全平台）：重命名二进制**
+
+把 `LspProxy.exe` 复制一份并命名为目标 LSP 的名称。LspProxy 启动时会检测自身名称，自动代理对应 LSP，并跳过自身副本查找真实的 LSP（不会递归）。
+
+```powershell
+# 以 rust-analyzer 为例
+copy "$(go env GOPATH)\bin\LspProxy.exe" "D:\langcode\GO\bin\rust-analyzer.exe"
+```
+
+`settings.json`：
+
+```json
+{ "rust-analyzer.server.path": "D:\\langcode\\GO\\bin\\rust-analyzer.exe" }
+```
+
+> 真实的 rust-analyzer 必须在 PATH 中（且不在重命名副本所在目录），或在同目录放置 `rust-analyzer.real.exe`。
+
+**方案 B：wrapper 脚本**（Linux / macOS 首选，Windows 亦可）
 
 **Linux / macOS** — `rust-analyzer-proxy.sh`：
 
@@ -160,13 +179,13 @@ if (-not (Test-Path $bin)) { $bin = "LspProxy" }
 
 > PowerShell 首次使用可能需执行 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`。
 
-`settings.json`：
+`settings.json` 指向对应脚本：
 
 ```json
 { "rust-analyzer.server.path": "/usr/local/bin/rust-analyzer-proxy.sh" }
 ```
 
-其他 LSP（clangd、gopls、typescript-language-server 等）同理，替换脚本中的 `rust-analyzer` 即可。
+其他 LSP（clangd、gopls、typescript-language-server 等）同理，替换脚本或重命名副本中的 `rust-analyzer` 即可。
 
 ---
 

@@ -13,6 +13,8 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/SantaChains/LspProxy/internal/config"
@@ -66,8 +68,13 @@ func (p *Proxy) Run(ctx context.Context, command string, args []string) error {
 		slog.String("targetLang", p.cfg.Proxy.TargetLang),
 	)
 
-	// 启动 LSP 子进程
-	cmd := exec.CommandContext(ctx, command, args...)
+	// 启动 LSP 子进程。
+	// resolveRealLSP 确保被复制为 LSP 名称的 LspProxy 不会 exec 到自身导致死循环。
+	realCmd, err := resolveRealLSP(command)
+	if err != nil {
+		return fmt.Errorf("解析 LSP 可执行文件失败 [%s]: %w", command, err)
+	}
+	cmd := exec.CommandContext(ctx, realCmd, args...)
 
 	// 将 LSP 进程的 stderr 转发到我们的 stderr，方便排查 LSP 本身的错误
 	cmd.Stderr = os.Stderr
@@ -140,6 +147,77 @@ func (p *Proxy) Run(ctx context.Context, command string, args []string) error {
 
 	p.logger.Info("LSP 子进程正常退出")
 	return nil
+}
+
+// resolveRealLSP 解析真实 LSP 可执行文件路径。
+//
+// 当 LspProxy 被复制/重命名为某个 LSP 名称（如 rust-analyzer.exe）时，
+// 直接 exec.LookPath(command) 会找到自身副本并导致无限递归。
+// 本函数按以下顺序解析，确保启动的是真实的 LSP：
+//  1. 与 LspProxy 自身可执行文件同目录下的 "<command>.real(.exe)" 或 "<command>.orig(.exe)"
+//  2. PATH 中搜索 command；若自身即以该 LSP 名运行，则跳过自身所在目录
+//  3. 若 command 本身是绝对路径或含目录分隔符，则原样返回（由调用方/OS 处理）
+func resolveRealLSP(command string) (string, error) {
+	// 含路径分隔符时视为显式路径，直接使用
+	if strings.ContainsAny(command, `/\`) {
+		return command, nil
+	}
+
+	selfPath, selfErr := os.Executable()
+	selfDir := ""
+	selfName := ""
+	if selfErr == nil {
+		selfDir = filepath.Dir(selfPath)
+		base := filepath.Base(selfPath)
+		selfName = strings.ToLower(strings.TrimSuffix(base, filepath.Ext(base)))
+	}
+
+	// 1. 同目录显式别名（无论是否以 LSP 名运行均检查）
+	if selfDir != "" {
+		for _, alias := range []string{command + ".real", command + ".orig"} {
+			candidate := filepath.Join(selfDir, alias)
+			if p, err := exec.LookPath(candidate); err == nil {
+				return p, nil
+			}
+		}
+	}
+
+	// 仅当自身即以该 LSP 名称运行时，才跳过自身所在目录（避免递归）
+	skipSelfDir := selfName != "" && strings.EqualFold(selfName, command)
+
+	// 2. PATH 搜索
+	pathEnv := os.Getenv("PATH")
+	for _, dir := range filepath.SplitList(pathEnv) {
+		dir = strings.TrimSpace(dir)
+		if dir == "" {
+			continue
+		}
+		if skipSelfDir && samePath(dir, selfDir) {
+			continue
+		}
+		candidate := filepath.Join(dir, command)
+		if p, err := exec.LookPath(candidate); err == nil {
+			return p, nil
+		}
+	}
+
+	if skipSelfDir {
+		return "", fmt.Errorf("未找到真实的 LSP 可执行文件 %q（请确认其已安装且不在 LspProxy 自身目录，或在同目录放置 %q.real）", command, command)
+	}
+	return "", fmt.Errorf("未找到 LSP 可执行文件 %q", command)
+}
+
+// samePath 判断两个目录路径是否指向同一位置（容忍大小写与斜杠差异）。
+func samePath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return strings.EqualFold(a, b)
+	}
+	return strings.EqualFold(absA, absB)
 }
 
 // notifyLspCrash 在 LSP 子进程异常退出后，通过 os.Stdout 直接向编辑器发送：
