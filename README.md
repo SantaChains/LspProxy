@@ -101,6 +101,8 @@ LspProxy --tui
 
 ## 编辑器集成
 
+LspProxy 对所有支持自定义 LSP 命令的编辑器通用。Neovim 和 Zed 原生支持传参，直接指定 `LspProxy -- <lsp>` 即可；VSCode 的 `server.path` 不支持传参，需用自调用副本。
+
 ### Neovim（nvim-lspconfig）
 
 ```lua
@@ -126,71 +128,25 @@ require('lspconfig').rust_analyzer.setup({
 
 ### VSCode
 
-`server.path` 仅接受单个可执行文件，不支持传参。Windows 上推荐使用**重命名二进制**方案（无需任何 wrapper 脚本，最稳定）：
+`rust-analyzer.server.path` 仅接受单个可执行文件路径，不支持传参。用**自调用副本**方案最稳定：
 
-**方案 A（推荐，全平台）：重命名二进制**
-
-把 `LspProxy.exe` 复制一份并命名为目标 LSP 的名称。LspProxy 启动时会检测自身名称，自动代理对应 LSP，并跳过自身副本查找真实的 LSP（不会递归）。
+1. 把 `LspProxy.exe` 复制一份命名为 `rust-analyzer.exe`，放在独立目录（不要与真实 rust-analyzer 同目录）：
 
 ```powershell
-# 以 rust-analyzer 为例
-copy "$(go env GOPATH)\bin\LspProxy.exe" "D:\langcode\GO\bin\rust-analyzer.exe"
+copy "$(go env GOPATH)\bin\LspProxy.exe" "D:\tools\lsp-proxy\rust-analyzer.exe"
 ```
 
-`settings.json`：
+2. VSCode `settings.json`：
 
 ```json
-{ "rust-analyzer.server.path": "D:\\langcode\\GO\\bin\\rust-analyzer.exe" }
+{ "rust-analyzer.server.path": "D:\\tools\\lsp-proxy\\rust-analyzer.exe" }
 ```
 
-> 真实的 rust-analyzer 必须在 PATH 中（且不在重命名副本所在目录），或在同目录放置 `rust-analyzer.real.exe`。
+3. 重启 VSCode。
 
-**方案 B：wrapper 脚本**（Linux / macOS 首选，Windows 亦可）
+LspProxy 启动时检测到自身名为 `rust-analyzer`，自动在 PATH 中查找真实 rust-analyzer 并代理（跳过自身副本所在目录，不会递归）。真实 rust-analyzer 须在 PATH 中且不与副本同目录，或在副本同目录放置 `rust-analyzer.real.exe`。
 
-**Linux / macOS** — `rust-analyzer-proxy.sh`：
-
-```sh
-#!/bin/sh
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -x "$SCRIPT_DIR/LspProxy" ]; then
-  exec "$SCRIPT_DIR/LspProxy" -- rust-analyzer "$@"
-fi
-exec LspProxy -- rust-analyzer "$@"
-```
-
-```bash
-chmod +x /usr/local/bin/rust-analyzer-proxy.sh
-```
-
-**Windows (cmd)** — `rust-analyzer-proxy.bat`：
-
-```bat
-@echo off
-if exist "%~dp0LspProxy.exe" (
-    "%~dp0LspProxy.exe" -- rust-analyzer %*
-) else (
-    LspProxy -- rust-analyzer %*
-)
-```
-
-**Windows (PowerShell)** — `rust-analyzer-proxy.ps1`：
-
-```powershell
-param([Parameter(ValueFromRemainingArguments = $true)] $Rest)
-$bin = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "LspProxy.exe"
-if (-not (Test-Path $bin)) { $bin = "LspProxy" }
-& $bin -- rust-analyzer @Rest
-```
-
-> PowerShell 首次使用可能需执行 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`。
-
-`settings.json` 指向对应脚本：
-
-```json
-{ "rust-analyzer.server.path": "/usr/local/bin/rust-analyzer-proxy.sh" }
-```
-
-其他 LSP（clangd、gopls、typescript-language-server 等）同理，替换脚本或重命名副本中的 `rust-analyzer` 即可。
+> 其他 LSP（clangd、gopls、pyright 等）同理：复制为对应 LSP 名，配置对应扩展的 `server.path`。
 
 ---
 
