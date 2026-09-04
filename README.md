@@ -4,13 +4,13 @@
 
 **透明代理 LSP 消息，将英文文档实时翻译为中文**
 
-[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&style=flat-square)](https://go.dev/)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go\&style=flat-square)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?style=flat-square)](https://github.com/SantaChains/LspProxy)
 
 </div>
 
----
+***
 
 ## 简介
 
@@ -25,27 +25,32 @@
 
 ### 翻译覆盖范围
 
-| LSP 消息 | 字段 | 说明 |
-|---|---|---|
-| `textDocument/hover` | `contents` | 悬停文档 |
-| `textDocument/completion` | `documentation` | 补全项说明 |
-| `textDocument/signatureHelp` | `documentation` | 签名提示 |
-| `textDocument/publishDiagnostics` | `message` | 诊断消息 |
-| `completionItem/resolve` | `documentation` | 补全项解析 |
-| `textDocument/diagnostic` | `message` | 拉取式诊断（LSP 3.17+） |
+| LSP 消息                            | 字段              | 说明               |
+| --------------------------------- | --------------- | ---------------- |
+| `textDocument/hover`              | `contents`      | 悬停文档             |
+| `textDocument/completion`         | `documentation` | 补全项说明            |
+| `textDocument/signatureHelp`      | `documentation` | 签名提示             |
+| `textDocument/publishDiagnostics` | `message`       | 诊断消息             |
+| `completionItem/resolve`          | `documentation` | 补全项解析            |
+| `textDocument/diagnostic`         | `message`       | 拉取式诊断（LSP 3.17+） |
 
----
+***
 
 ## 特性
 
 - **四级缓存**：词汇本 → 内存 LRU → 磁盘 JSON 词典 → 在线翻译 API，重复文档毫秒响应
+
 - **两阶段超时**：缓存命中走 50 ms 快速路径；未命中在可配置超时内等待翻译，超时后返回原文并后台预热缓存
+
 - **占位符保护**：代码块与技术术语替换为 `$CODE_N$` 占位符后整体翻译，还原后代码不被误译
+
 - **诊断零延迟**：`publishDiagnostics` 立即以英文显示，翻译完成后异步推送中文版本
+
 - **并发合并**：相同文本的并发翻译请求只发起一次 API 调用
+
 - **降级优先**：任何环节失败均透传原文，绝不中断代理主流程
 
----
+***
 
 ## 安装
 
@@ -62,11 +67,14 @@ go install github.com/SantaChains/LspProxy@latest
 要求 Go 1.25+。
 
 构建后运行 `LspProxy --version`，版本号会自动识别：
+
 - `go install github.com/SantaChains/LspProxy@latest` → 显示模块版本（含 commit 与日期）
+
 - 本地 `go build` → 从 git 元数据读取 commit 与日期
+
 - release 构建（`-ldflags` 注入）→ 显示语义化版本号
 
----
+***
 
 ## 快速开始
 
@@ -89,15 +97,15 @@ LspProxy --tui
 
 ### 命令行标志
 
-| 标志 | 简写 | 说明 |
-|---|---|---|
-| `--config <path>` | | 配置文件路径（默认 `~/.config/lsp-proxy/config.yaml`） |
-| `--engine <name>` | `-e` | 覆盖翻译引擎：`google` \| `openai` |
-| `--tui` | | 启动 TUI 管理界面 |
-| `--version` | `-v` | 显示版本信息 |
-| `--help` | `-h` | 显示帮助 |
+| 标志                | 简写     | 说明                                           |
+| ----------------- | ------ | -------------------------------------------- |
+| `--config <path>` | <br /> | 配置文件路径（默认 `~/.config/lsp-proxy/config.yaml`） |
+| `--engine <name>` | `-e`   | 覆盖翻译引擎：`google` \| `openai`                  |
+| `--tui`           | <br /> | 启动 TUI 管理界面                                  |
+| `--version`       | `-v`   | 显示版本信息                                       |
+| `--help`          | `-h`   | 显示帮助                                         |
 
----
+***
 
 ## 编辑器集成
 
@@ -146,27 +154,29 @@ require('lspconfig').clangd.setup({
 copy "$(go env GOPATH)\bin\LspProxy.exe" "D:\tools\lsp-proxy\rust-analyzer.exe"
 ```
 
-2. VSCode `settings.json`：
+1. VSCode `settings.json`：
 
 ```json
 { "rust-analyzer.server.path": "D:\\tools\\lsp-proxy\\rust-analyzer.exe" }
 ```
 
-3. 重启 VSCode。
+1. 重启 VSCode。
 
 LspProxy 启动时检测到自身名为 `rust-analyzer`，自动在 PATH 中查找真实 rust-analyzer 并代理（跳过自身副本所在目录，不会递归）。真实 rust-analyzer 须在 PATH 中且不与副本同目录，或在副本同目录放置 `rust-analyzer.real.exe`。
 
 > 其他 LSP（clangd、gopls、pyright 等）同理：复制为对应 LSP 名，配置对应扩展的 `server.path`。
 >
 > clangd 示例（VSCode `clangd` 扩展）：
+>
 > ```powershell
 > copy "$(go env GOPATH)\bin\LspProxy.exe" "D:\tools\lsp-proxy\clangd.exe"
 > ```
+>
 > ```json
 > { "clangd.path": "D:\\tools\\lsp-proxy\\clangd.exe" }
 > ```
 
----
+***
 
 ## 配置
 
@@ -193,12 +203,12 @@ log:
 
 ### 翻译引擎
 
-| 引擎 | 密钥 | 适用场景 |
-|---|---|---|
+| 引擎         | 密钥 | 适用场景     |
+| ---------- | -- | -------- |
 | Google（默认） | 无需 | 日常使用，零配置 |
-| OpenAI | 需要 | 复杂文档，高质量 |
-| DeepSeek | 需要 | 高性价比 |
-| Ollama（本地） | 无需 | 离线 / 隐私 |
+| OpenAI     | 需要 | 复杂文档，高质量 |
+| DeepSeek   | 需要 | 高性价比     |
+| Ollama（本地） | 无需 | 离线 / 隐私  |
 
 使用 DeepSeek：
 
@@ -222,21 +232,21 @@ translate:
     model: qwen2.5:7b
 ```
 
----
+***
 
 ## TUI 管理界面
 
 `LspProxy --tui` 启动可视化管理界面，提供状态、配置、日志、提示词、词典、词汇本六个标签页。
 
-| 快捷键 | 功能 |
-|---|---|
-| `1`–`6` | 切换标签页 |
-| `Tab` / `↑↓` | 配置表单字段导航 |
-| `Ctrl+S` | 保存配置 |
-| `j/k/PgUp/PgDn/g/G` | 日志滚动 |
-| `q` / `Ctrl+C` | 退出 |
+| 快捷键                 | 功能       |
+| ------------------- | -------- |
+| `1`–`6`             | 切换标签页    |
+| `Tab` / `↑↓`        | 配置表单字段导航 |
+| `Ctrl+S`            | 保存配置     |
+| `j/k/PgUp/PgDn/g/G` | 日志滚动     |
+| `q` / `Ctrl+C`      | 退出       |
 
----
+***
 
 ## 项目结构
 
@@ -256,7 +266,7 @@ LspProxy/
 
 分层职责：`cmd` 装配组件，`config` 不依赖其他内部包，`lsp` 不知翻译细节，`translate` 不知 LSP 协议，`proxy` 编排全部，`tui` 只调用 `config`。
 
----
+***
 
 ## 开发
 
@@ -277,40 +287,47 @@ bun run dev
 bun run build
 ```
 
----
+***
 
 ## 设计原则
 
 - **零污染**：日志严格写文件，不写 stdout，LSP 协议帧不被破坏
+
 - **降级优先**：词典失败退化为纯内存缓存；翻译失败透传原文
+
 - **并发安全**：翻译与写出通过 channel 解耦，读取循环永不阻塞
+
 - **协议透明**：仅修改文档字段，方法名、ID 等其余字段原样保留
 
----
+***
 
 ## 路线图
 
-### P0（进行中）
+### P0（已完成）
 
-- **FallbackEngine 并发竞速**：免费接口（Google、Bing、MyMemory）并发请求，首个成功立即返回，10s 总超时后降级到 AI 接口，避免串行等待
-- **新增 BingEngine**：Bing 翻译公开端点，国内可达，无需 API key
+- **FallbackEngine 并发竞速**：免费引擎（Google、MyMemory）并发请求，首个成功立即返回，全部失败后串行降级到 AI 接口，避免串行等待超时
+
+- **新增 MyMemoryEngine**：MyMemory 免费翻译 API，国内可达，无需 API key，匿名每日 5000 字限额
 
 ### P1
 
 - **引擎熔断**：连续失败 N 次的引擎进入冷却期，期间跳过
+
 - **提示词精简**：明确保留范围（标识符、关键字、API 名），翻译描述性文字
 
 ### P2
 
-- **新增 MyMemoryEngine**：免费 API，每日 5000 字限额，作为额外兜底
+- **Bing 翻译接入**：研究 Bing 免费端点的稳定调用方式
+
 - **TUI 实时翻译日志**：新增日志标签页，便于调试
 
 ### P3
 
 - **DeepSeek 结构化输出**：返回原文-译文-术语对照 JSON，支持自动术语提取
+
 - **批量翻译预热**：项目启动时批量翻译 completion 文档，减少首次 hover 等待
 
----
+***
 
 ## 致谢
 

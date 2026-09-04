@@ -141,9 +141,9 @@ forwardLspToClient：ReadMessage → BaseMessage 解析 → handler.ProcessServe
 
 ## 架构模式
 
-引擎链路（外到内）：GlossaryEngine → SingleflightEngine → DictEngine（内存LRU + 磁盘词典）→ FallbackEngine（多引擎自动降级）→ 在线 API。
+引擎链路（外到内）：GlossaryEngine → SingleflightEngine → DictEngine（内存LRU + 磁盘词典）→ FallbackEngine → 在线 API。
 
-FallbackEngine：按优先级排列多个在线引擎，前一个翻译失败自动尝试下一个。主引擎优先，已配置的备用引擎次之，google 始终作为最终兜底。即使用户忘了切换 engine，只要配置了 openai api_key，google 超时后会自动降级到 openai。
+FallbackEngine：前 N 个免费引擎（Google、MyMemory）并发竞速，首个成功立即返回；全部失败后串行尝试 AI 引擎（OpenAI），避免浪费配额。免费引擎无需配置，AI 引擎需 api_key。
 
 缓存查询顺序：LSP 专属词汇本 → 全局词汇本 → 内存 LRU → 磁盘 JSON 词典 → 在线翻译 API。词汇本命中纯内存，不经 singleflight。
 

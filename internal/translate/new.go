@@ -2,7 +2,6 @@
 package translate
 
 import (
-	"fmt"
 	"log/slog"
 
 	"github.com/SantaChains/LspProxy/internal/config"
@@ -30,7 +29,7 @@ import (
 //  5. 磁盘 JSON 词典
 //  6. FallbackEngine：在线翻译 API（主引擎 → 备用引擎）
 func New(cfg *config.Config, lspName string, logger *slog.Logger) (Engine, error) {
-	engines, err := buildEngines(cfg, logger)
+	engines, concurrent, err := buildEngines(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +38,7 @@ func New(cfg *config.Config, lspName string, logger *slog.Logger) (Engine, error
 	if len(engines) == 1 {
 		base = engines[0]
 	} else {
-		base = NewFallbackEngine(engines, logger)
+		base = NewFallbackEngine(engines, concurrent, logger)
 	}
 
 	// 内存缓存上限（MB → 字节）
@@ -86,54 +85,45 @@ func New(cfg *config.Config, lspName string, logger *slog.Logger) (Engine, error
 	return glossary.NewGlossaryEngine(base, g, lspName, logger), nil
 }
 
-// buildEngines 根据配置构建在线引擎列表（按优先级排列）。
+// buildEngines 根据配置构建在线引擎列表。
 //
-// 规则：
-//   - 用户指定的 engine 排第一
-//   - 若配置了 openai.api_key，将 openai 加入列表（若未被指定为主引擎）
-//   - google 始终可用，作为最终兜底
+// 策略：免费引擎始终优先（并发竞速），AI 引擎作为串行兜底。
+//   - 免费组：Google、MyMemory（无需配置，国内可达性不同，并发取最快）
+//   - AI 组：OpenAI 兼容引擎（需配置 api_key，仅在免费组全部失败时使用）
 //
-// 这样即使用户忘了切换 engine，只要配置了 openai，google 失败后会自动降级到 openai。
-func buildEngines(cfg *config.Config, logger *slog.Logger) ([]Engine, error) {
-	primary := cfg.Translate.Engine
-	if primary == "" {
-		primary = "google"
-	}
-
+// 这样即使 Google 在国内不可达，MyMemory 仍能快速返回；两者都失败才调用 AI。
+// 返回值第二个参数为并发引擎数量（免费组大小）。
+func buildEngines(cfg *config.Config, logger *slog.Logger) ([]Engine, int, error) {
 	oaiConfigured := cfg.Translate.OpenAI.APIKey != "" &&
 		cfg.Translate.OpenAI.BaseURL != "" &&
 		cfg.Translate.OpenAI.Model != ""
 
-	var engines []Engine
-
-	switch primary {
-	case "google":
-		engines = append(engines, NewGoogleEngine())
-		if oaiConfigured {
-			engines = append(engines, buildOpenAIEngine(cfg, logger))
-		}
-
-	case "openai":
-		if !oaiConfigured {
-			return nil, fmt.Errorf("translate: openai 引擎需要配置 base_url、model、api_key")
-		}
-		engines = append(engines, buildOpenAIEngine(cfg, logger))
-		engines = append(engines, NewGoogleEngine()) // google 作为兜底
-
-	default:
-		return nil, fmt.Errorf("translate: 不支持的翻译引擎 %q（可选值：google、openai）", primary)
+	// 免费引擎组（并发竞速）
+	freeEngines := []Engine{
+		NewGoogleEngine(),
+		NewMyMemoryEngine(),
 	}
+
+	var engines []Engine
+	engines = append(engines, freeEngines...)
+
+	// AI 引擎组（串行兜底，避免浪费配额）
+	if oaiConfigured {
+		engines = append(engines, buildOpenAIEngine(cfg, logger))
+	}
+
+	concurrent := len(freeEngines)
 
 	names := make([]string, len(engines))
 	for i, e := range engines {
 		names[i] = e.Name()
 	}
 	logger.Info("翻译引擎链已构建",
-		slog.String("primary", primary),
+		slog.Int("concurrent", concurrent),
 		slog.Any("fallback_chain", names),
 	)
 
-	return engines, nil
+	return engines, concurrent, nil
 }
 
 // buildOpenAIEngine 从配置构建 OpenAI 兼容引擎。
