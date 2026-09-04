@@ -17,7 +17,10 @@ import (
 //
 // 引擎链路（从外到内）：
 //
-//	GlossaryEngine → SingleflightEngine → DictEngine（内存LRU + 磁盘词典 + 在线翻译）
+//	GlossaryEngine → SingleflightEngine → DictEngine（内存LRU + 磁盘词典 + FallbackEngine）
+//
+// FallbackEngine 内部按优先级排列多个在线引擎，前一个失败自动尝试下一个，
+// 避免因单个引擎不可达导致翻译全部失败。
 //
 // 查询顺序：
 //  1. LSP 专属词汇本（纯内存，最高优先级）
@@ -25,33 +28,18 @@ import (
 //  3. [SingleflightEngine] 合并并发请求（相同文本只发起一次 API 调用）
 //  4. 内存 LRU 缓存
 //  5. 磁盘 JSON 词典
-//  6. 在线翻译 API
+//  6. FallbackEngine：在线翻译 API（主引擎 → 备用引擎）
 func New(cfg *config.Config, lspName string, logger *slog.Logger) (Engine, error) {
+	engines, err := buildEngines(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+
 	var base Engine
-
-	switch cfg.Translate.Engine {
-	case "google", "":
-		// 空字符串时默认使用 Google 引擎
-		base = NewGoogleEngine()
-
-	case "openai":
-		oaiCfg := cfg.Translate.OpenAI
-		if oaiCfg.BaseURL == "" {
-			return nil, fmt.Errorf("translate: openai 引擎需要配置 base_url")
-		}
-		if oaiCfg.Model == "" {
-			return nil, fmt.Errorf("translate: openai 引擎需要配置 model")
-		}
-		// 解析提示词文件路径
-		promptFile := oaiCfg.PromptFile
-		if promptFile == "" {
-			promptFile = config.DefaultPromptFile()
-		}
-		loader := NewPromptLoader(promptFile, logger)
-		base = NewOpenAIEngine(oaiCfg.BaseURL, oaiCfg.APIKey, oaiCfg.Model, oaiCfg.ThinkingMode, loader)
-
-	default:
-		return nil, fmt.Errorf("translate: 不支持的翻译引擎 %q（可选值：google、openai）", cfg.Translate.Engine)
+	if len(engines) == 1 {
+		base = engines[0]
+	} else {
+		base = NewFallbackEngine(engines, logger)
 	}
 
 	// 内存缓存上限（MB → 字节）
@@ -96,4 +84,65 @@ func New(cfg *config.Config, lspName string, logger *slog.Logger) (Engine, error
 
 	g := glossary.New(glossaryDir, lspNames, logger)
 	return glossary.NewGlossaryEngine(base, g, lspName, logger), nil
+}
+
+// buildEngines 根据配置构建在线引擎列表（按优先级排列）。
+//
+// 规则：
+//   - 用户指定的 engine 排第一
+//   - 若配置了 openai.api_key，将 openai 加入列表（若未被指定为主引擎）
+//   - google 始终可用，作为最终兜底
+//
+// 这样即使用户忘了切换 engine，只要配置了 openai，google 失败后会自动降级到 openai。
+func buildEngines(cfg *config.Config, logger *slog.Logger) ([]Engine, error) {
+	primary := cfg.Translate.Engine
+	if primary == "" {
+		primary = "google"
+	}
+
+	oaiConfigured := cfg.Translate.OpenAI.APIKey != "" &&
+		cfg.Translate.OpenAI.BaseURL != "" &&
+		cfg.Translate.OpenAI.Model != ""
+
+	var engines []Engine
+
+	switch primary {
+	case "google":
+		engines = append(engines, NewGoogleEngine())
+		if oaiConfigured {
+			engines = append(engines, buildOpenAIEngine(cfg, logger))
+		}
+
+	case "openai":
+		if !oaiConfigured {
+			return nil, fmt.Errorf("translate: openai 引擎需要配置 base_url、model、api_key")
+		}
+		engines = append(engines, buildOpenAIEngine(cfg, logger))
+		engines = append(engines, NewGoogleEngine()) // google 作为兜底
+
+	default:
+		return nil, fmt.Errorf("translate: 不支持的翻译引擎 %q（可选值：google、openai）", primary)
+	}
+
+	names := make([]string, len(engines))
+	for i, e := range engines {
+		names[i] = e.Name()
+	}
+	logger.Info("翻译引擎链已构建",
+		slog.String("primary", primary),
+		slog.Any("fallback_chain", names),
+	)
+
+	return engines, nil
+}
+
+// buildOpenAIEngine 从配置构建 OpenAI 兼容引擎。
+func buildOpenAIEngine(cfg *config.Config, logger *slog.Logger) Engine {
+	oaiCfg := cfg.Translate.OpenAI
+	promptFile := oaiCfg.PromptFile
+	if promptFile == "" {
+		promptFile = config.DefaultPromptFile()
+	}
+	loader := NewPromptLoader(promptFile, logger)
+	return NewOpenAIEngine(oaiCfg.BaseURL, oaiCfg.APIKey, oaiCfg.Model, oaiCfg.ThinkingMode, loader)
 }

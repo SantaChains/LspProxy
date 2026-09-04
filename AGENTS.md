@@ -63,7 +63,7 @@ type Engine interface {
 ```
 
 实现：GoogleEngine（google.go）、OpenAIEngine（openai.go）。
-装饰器：CachedEngine（内存 LRU）、DictEngine（磁盘 JSON 词典）、SingleflightEngine（并发合并）、GlossaryEngine（术语词汇本）。
+装饰器：CachedEngine（内存 LRU）、DictEngine（磁盘 JSON 词典）、SingleflightEngine（并发合并）、FallbackEngine（多引擎自动降级）、GlossaryEngine（术语词汇本）。
 工厂：translate.New(cfg, lspName, logger) 返回组装好的完整引擎链路。
 
 ### lsp.Handler（消息处理核心）
@@ -141,7 +141,9 @@ forwardLspToClient：ReadMessage → BaseMessage 解析 → handler.ProcessServe
 
 ## 架构模式
 
-引擎链路（外到内）：GlossaryEngine → SingleflightEngine → DictEngine（内存LRU + 磁盘词典）→ 在线 API。
+引擎链路（外到内）：GlossaryEngine → SingleflightEngine → DictEngine（内存LRU + 磁盘词典）→ FallbackEngine（多引擎自动降级）→ 在线 API。
+
+FallbackEngine：按优先级排列多个在线引擎，前一个翻译失败自动尝试下一个。主引擎优先，已配置的备用引擎次之，google 始终作为最终兜底。即使用户忘了切换 engine，只要配置了 openai api_key，google 超时后会自动降级到 openai。
 
 缓存查询顺序：LSP 专属词汇本 → 全局词汇本 → 内存 LRU → 磁盘 JSON 词典 → 在线翻译 API。词汇本命中纯内存，不经 singleflight。
 
