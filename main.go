@@ -28,7 +28,7 @@ var (
 // 当 argv[0] 的基础名不在此集合中时，视为被以某个 LSP 名称调用，
 // 自动以代理模式启动，代理该名称对应的真实 LSP。
 var proxyNames = map[string]struct{}{
-	"lspproxy": {},
+	"lspproxy":  {},
 	"lsp-proxy": {},
 }
 
@@ -58,4 +58,3 @@ func detectLSPName(argv0 string) string {
 	}
 	return name
 }
-

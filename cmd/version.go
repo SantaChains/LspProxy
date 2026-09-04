@@ -90,9 +90,11 @@ func SetVersionInfo(version, commit, date string) {
 
 // pseudoVersionRE 匹配 Go 模块伪版本末尾的时间戳与 commit。
 // 伪版本格式（三种）：
-//   vX.0.0-yyyymmddhhmmss-abcdefabcdef
-//   vX.Y.(Z+1)-0.yyyymmddhhmmss-abcdefabcdef
-//   vX.Y.Z-pre.0.yyyymmddhhmmss-abcdefabcdef
+//
+//	vX.0.0-yyyymmddhhmmss-abcdefabcdef
+//	vX.Y.(Z+1)-0.yyyymmddhhmmss-abcdefabcdef
+//	vX.Y.Z-pre.0.yyyymmddhhmmss-abcdefabcdef
+//
 // 共同特征：以 <14位时间戳>-<12位十六进制commit> 结尾。
 var pseudoVersionRE = regexp.MustCompile(`(\d{14})-([0-9a-fA-F]{12})$`)
 

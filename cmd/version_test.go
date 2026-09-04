@@ -4,10 +4,10 @@ import "testing"
 
 func TestParsePseudoVersion(t *testing.T) {
 	cases := []struct {
-		name    string
-		input   string
-		commit  string
-		date    string
+		name   string
+		input  string
+		commit string
+		date   string
 	}{
 		{
 			name:   "标准伪版本",

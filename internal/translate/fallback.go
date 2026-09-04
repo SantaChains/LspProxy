@@ -223,4 +223,3 @@ func (f *FallbackEngine) Name() string {
 	}
 	return fmt.Sprintf("Fallback[%s](%s)", mode, strings.Join(names, " → "))
 }
-
