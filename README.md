@@ -111,6 +111,16 @@ require('lspconfig').rust_analyzer.setup({
 })
 ```
 
+hover 触发：默认绑定 `K`，或 `:lua vim.lsp.buf.hover()`。LspProxy 只拦截翻译内容，不影响 hover 触发机制。
+
+clangd 示例：
+
+```lua
+require('lspconfig').clangd.setup({
+  cmd = { 'LspProxy', '--', 'clangd' },
+})
+```
+
 ### Zed（settings.json）
 
 ```json
@@ -147,6 +157,14 @@ copy "$(go env GOPATH)\bin\LspProxy.exe" "D:\tools\lsp-proxy\rust-analyzer.exe"
 LspProxy 启动时检测到自身名为 `rust-analyzer`，自动在 PATH 中查找真实 rust-analyzer 并代理（跳过自身副本所在目录，不会递归）。真实 rust-analyzer 须在 PATH 中且不与副本同目录，或在副本同目录放置 `rust-analyzer.real.exe`。
 
 > 其他 LSP（clangd、gopls、pyright 等）同理：复制为对应 LSP 名，配置对应扩展的 `server.path`。
+>
+> clangd 示例（VSCode `clangd` 扩展）：
+> ```powershell
+> copy "$(go env GOPATH)\bin\LspProxy.exe" "D:\tools\lsp-proxy\clangd.exe"
+> ```
+> ```json
+> { "clangd.path": "D:\\tools\\lsp-proxy\\clangd.exe" }
+> ```
 
 ---
 
@@ -267,6 +285,30 @@ bun run build
 - **降级优先**：词典失败退化为纯内存缓存；翻译失败透传原文
 - **并发安全**：翻译与写出通过 channel 解耦，读取循环永不阻塞
 - **协议透明**：仅修改文档字段，方法名、ID 等其余字段原样保留
+
+---
+
+## 路线图
+
+### P0（进行中）
+
+- **FallbackEngine 并发竞速**：免费接口（Google、Bing、MyMemory）并发请求，首个成功立即返回，10s 总超时后降级到 AI 接口，避免串行等待
+- **新增 BingEngine**：Bing 翻译公开端点，国内可达，无需 API key
+
+### P1
+
+- **引擎熔断**：连续失败 N 次的引擎进入冷却期，期间跳过
+- **提示词精简**：明确保留范围（标识符、关键字、API 名），翻译描述性文字
+
+### P2
+
+- **新增 MyMemoryEngine**：免费 API，每日 5000 字限额，作为额外兜底
+- **TUI 实时翻译日志**：新增日志标签页，便于调试
+
+### P3
+
+- **DeepSeek 结构化输出**：返回原文-译文-术语对照 JSON，支持自动术语提取
+- **批量翻译预热**：项目启动时批量翻译 completion 文档，减少首次 hover 等待
 
 ---
 
