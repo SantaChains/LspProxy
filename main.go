@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/zerx-lab/LspProxy/cmd"
+	"github.com/SantaChains/LspProxy/cmd"
 )
 
 // 以下三个变量由 -ldflags 在构建时注入：

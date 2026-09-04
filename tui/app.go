@@ -22,9 +22,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/zerx-lab/LspProxy/internal/config"
-	"github.com/zerx-lab/LspProxy/internal/glossary"
-	"github.com/zerx-lab/LspProxy/tui/styles"
+	"github.com/SantaChains/LspProxy/internal/config"
+	"github.com/SantaChains/LspProxy/internal/glossary"
+	"github.com/SantaChains/LspProxy/tui/styles"
 )
 
 // ────────────────────────────────────────────────────────────

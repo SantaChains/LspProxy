@@ -15,10 +15,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/zerx-lab/LspProxy/internal/config"
-	"github.com/zerx-lab/LspProxy/internal/proxy"
-	"github.com/zerx-lab/LspProxy/internal/translate"
-	"github.com/zerx-lab/LspProxy/tui"
+	"github.com/SantaChains/LspProxy/internal/config"
+	"github.com/SantaChains/LspProxy/internal/proxy"
+	"github.com/SantaChains/LspProxy/internal/translate"
+	"github.com/SantaChains/LspProxy/tui"
 )
 
 // exitCoder 是可以提供退出码的错误接口，由 proxy.lspExitError 实现。

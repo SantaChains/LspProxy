@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zerx-lab/LspProxy/internal/glossary/builtin"
+	"github.com/SantaChains/LspProxy/internal/glossary/builtin"
 )
 
 // ─────────────────────────────────────────────

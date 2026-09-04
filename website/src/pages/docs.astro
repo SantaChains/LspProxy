@@ -43,7 +43,7 @@ const sidebarItems = [
 
 // ── 代码块 HTML 常量（通过 set:html 注入，避免 Astro 将 span 标签当模板节点解析）──
 
-const codeInstall = `<code><span style="color: var(--text-dim);">$</span> go install <span style="color: var(--green);">github.com/zerx-lab/LspProxy@latest</span></code>`;
+const codeInstall = `<code><span style="color: var(--text-dim);">$</span> go install <span style="color: var(--green);">github.com/SantaChains/LspProxy@latest</span></code>`;
 
 const codeVerify = `<code><span style="color: var(--text-dim);">$</span> LspProxy --version
 <span style="color: var(--text-muted);">LspProxy v0.1.0</span></code>`;
@@ -168,7 +168,7 @@ const codeEmacs = `<code><span class="syntax-comment">;; 使用 lsp-mode</span>
   '(rust-mode . (<span class="syntax-string">&quot;LspProxy&quot;</span> <span class="syntax-string">&quot;--&quot;</span> <span class="syntax-string">&quot;rust-analyzer&quot;</span>)))</code>`;
 
 const codeContributing = `<code><span style="color: var(--text-dim);"># 克隆仓库</span>
-git clone https://github.com/zerx-lab/LspProxy
+git clone https://github.com/SantaChains/LspProxy
 
 <span style="color: var(--text-dim);"># 构建</span>
 go build -o LspProxy .
@@ -248,7 +248,7 @@ go vet ./...</code>`;
 
       <div class="mt-auto pt-6 border-t" style="border-color: var(--border-subtle);">
         <a
-          href="https://github.com/zerx-lab/LspProxy"
+          href="https://github.com/SantaChains/LspProxy"
           target="_blank"
           rel="noopener noreferrer"
           class="sidebar-github flex items-center gap-2 px-2 py-1.5 text-xs font-mono transition-colors"

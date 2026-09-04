@@ -49,9 +49,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/zerx-lab/LspProxy/internal/config"
-	"github.com/zerx-lab/LspProxy/internal/markdown"
-	"github.com/zerx-lab/LspProxy/internal/translate"
+	"github.com/SantaChains/LspProxy/internal/config"
+	"github.com/SantaChains/LspProxy/internal/markdown"
+	"github.com/SantaChains/LspProxy/internal/translate"
 )
 
 // 确保 translateText 使用占位符法后，不再需要逐段处理，strings 仍被其他地方使用

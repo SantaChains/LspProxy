@@ -15,9 +15,9 @@ import (
 	"os/exec"
 	"sync"
 
-	"github.com/zerx-lab/LspProxy/internal/config"
-	"github.com/zerx-lab/LspProxy/internal/lsp"
-	"github.com/zerx-lab/LspProxy/internal/translate"
+	"github.com/SantaChains/LspProxy/internal/config"
+	"github.com/SantaChains/LspProxy/internal/lsp"
+	"github.com/SantaChains/LspProxy/internal/translate"
 )
 
 // lspExitError 携带 LSP 子进程的原始退出码，用于在 cmd/run.go 中透传给编辑器进程。

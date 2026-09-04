@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/zerx-lab/LspProxy/internal/glossary/builtin"
+	"github.com/SantaChains/LspProxy/internal/glossary/builtin"
 )
 
 // TestList_ReturnsBuiltinFiles 验证 List() 能返回内嵌的词汇本文件列表。

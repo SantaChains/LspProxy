@@ -9,7 +9,7 @@ import (
 
 	"log/slog"
 
-	"github.com/zerx-lab/LspProxy/internal/glossary"
+	"github.com/SantaChains/LspProxy/internal/glossary"
 )
 
 // newLogger 创建一个丢弃所有日志的 slog.Logger，避免测试输出噪音

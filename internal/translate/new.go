@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/zerx-lab/LspProxy/internal/config"
-	"github.com/zerx-lab/LspProxy/internal/glossary"
+	"github.com/SantaChains/LspProxy/internal/config"
+	"github.com/SantaChains/LspProxy/internal/glossary"
 )
 
 // New 根据配置创建对应的翻译引擎，并包装三级缓存（内存 LRU + 磁盘词典）、

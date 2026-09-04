@@ -6,9 +6,9 @@
 
 透明代理插入编辑器与 LSP 之间，实时将悬停文档、补全说明、签名提示、诊断信息翻译为中文。
 
-[![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat-square&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat-square&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?style=flat-square)](https://github.com/zerx-lab/LspProxy)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?style=flat-square)](https://github.com/SantaChains/LspProxy)
 
 </div>
 
@@ -36,16 +36,18 @@
 | `textDocument/completion` | `documentation` | 补全项说明 |
 | `textDocument/signatureHelp` | `documentation` | 参数/函数签名文档 |
 | `textDocument/publishDiagnostics` | `message` | 诊断错误消息 |
+| `completionItem/resolve` | `documentation` | 补全项解析文档 |
+| `textDocument/diagnostic` | `message` | 拉取式诊断（LSP 3.17+） |
 
 ---
 
 ## 核心特性
 
-### 三级缓存，极速响应
+### 四级缓存，极速响应
 
 ```
-内存 LRU  →  磁盘 JSON 词典  →  在线翻译 API
- （热数据）    （跨进程持久化）     （首次请求）
+词汇本  →  内存 LRU  →  磁盘 JSON 词典  →  在线翻译 API
+（精确匹配） （热数据）    （跨进程持久化）     （首次请求）
 ```
 
 - 内存缓存按**字节大小**限制（默认 30 MB），重复文档毫秒响应
@@ -75,15 +77,15 @@
 ### 从源码构建
 
 ```bash
-git clone https://github.com/zerx-lab/LspProxy
+git clone https://github.com/SantaChains/LspProxy
 cd LspProxy
-go build -o lsp-proxy .
+go build -o LspProxy .
 ```
 
 ### 安装到 `$GOPATH/bin`
 
 ```bash
-go install github.com/zerx-lab/LspProxy@latest
+go install github.com/SantaChains/LspProxy@latest
 ```
 
 ---
@@ -92,22 +94,22 @@ go install github.com/zerx-lab/LspProxy@latest
 
 ```bash
 # 代理 rust-analyzer（使用默认 Google 翻译，无需密钥）
-lsp-proxy -- rust-analyzer
+LspProxy -- rust-analyzer
 
 # 代理 clangd
-lsp-proxy -- clangd
+LspProxy -- clangd
 
 # 代理 gopls
-lsp-proxy -- gopls
+LspProxy -- gopls
 
 # 使用 OpenAI（或 DeepSeek / Qwen / Ollama）翻译
-lsp-proxy -e openai -- rust-analyzer
+LspProxy -e openai -- rust-analyzer
 
 # 指定配置文件
-lsp-proxy --config ~/my-config.yaml -- typescript-language-server --stdio
+LspProxy --config ~/my-config.yaml -- typescript-language-server --stdio
 
 # 启动 TUI 管理界面（可视化配置 + 日志查看）
-lsp-proxy --tui
+LspProxy --tui
 ```
 
 ### 命令行标志
@@ -130,19 +132,37 @@ require('lspconfig').rust_analyzer.setup({
 })
 ```
 
-### VSCode（settings.json）
+### VSCode
+
+VSCode 的 `server.path` 只接受单个可执行文件路径，不支持传参。需要创建一个 wrapper 脚本：
+
+**Unix**（`rust-analyzer-proxy.sh`）：
+
+```sh
+#!/bin/sh
+exec LspProxy -- rust-analyzer "$@"
+```
+
+```bash
+chmod +x /usr/local/bin/rust-analyzer-proxy.sh
+```
+
+**Windows**（`rust-analyzer-proxy.bat`）：
+
+```bat
+@echo off
+LspProxy -- rust-analyzer %*
+```
+
+**settings.json**：
 
 ```json
 {
-  "rust-analyzer.server.path": "/path/to/lsp-proxy",
-  "rust-analyzer.server.extraEnv": {},
-  "[rust-analyzer]": {
-    "editor.defaultFormatter": "rust-lang.rust-analyzer"
-  }
+  "rust-analyzer.server.path": "/usr/local/bin/rust-analyzer-proxy.sh"
 }
 ```
 
-> VSCode 集成需要配合包装脚本，详见[文档网站](website/)。
+> 其他 LSP（clangd、gopls 等）同理，将脚本中的 `rust-analyzer` 替换为对应的 LSP 命令即可。
 
 ### Zed（settings.json）
 
@@ -170,7 +190,7 @@ translate:
   engine: google          # 翻译引擎：google | openai
   openai:
     base_url: https://api.openai.com/v1   # 也可指向 DeepSeek / Qwen / Ollama
-    api_key: sk-xxxxxxxx
+    api_key: sk-xxxx
     model: gpt-4o-mini
 
 proxy:
@@ -200,7 +220,7 @@ translate:
   engine: openai
   openai:
     base_url: https://api.deepseek.com/v1
-    api_key: sk-xxxxxxxx
+    api_key: sk-xxxx
     model: deepseek-chat
 ```
 
@@ -211,7 +231,7 @@ translate:
   engine: openai
   openai:
     base_url: http://localhost:11434/v1
-    api_key: ""           # Ollama 不需要 API Key
+    api_key: dummy           # Ollama 不需要 API Key
     model: qwen2.5:7b
 ```
 
@@ -219,23 +239,23 @@ translate:
 
 ## TUI 管理界面
 
-运行 `lsp-proxy --tui` 启动可视化管理界面：
+运行 `LspProxy --tui` 启动可视化管理界面：
 
 ```
-┌─────────────────────────────────────────────┐
-│  [1] 状态    [2] 配置    [3] 日志            │
-├─────────────────────────────────────────────┤
-│  翻译引擎：  Google                          │
-│  目标语言：  zh-CN                           │
-│  内存缓存：  30 MB                           │
-│  翻译超时：  600 ms                          │
-│  日志级别：  info                            │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  [1] 状态  [2] 配置  [3] 日志  [4] 提示词  [5] 词典  [6] 词汇本 │
+├──────────────────────────────────────────────────────────┤
+│  翻译引擎：  Google                                        │
+│  目标语言：  zh-CN                                         │
+│  内存缓存：  30 MB                                         │
+│  翻译超时：  600 ms                                        │
+│  日志级别：  info                                          │
+└──────────────────────────────────────────────────────────┘
 ```
 
 | 快捷键 | 功能 |
 |---|---|
-| `1` / `2` / `3` | 切换标签页（状态 / 配置 / 日志） |
+| `1`-`6` | 切换标签页（状态页有效，配置页输入框中不拦截） |
 | `Tab` / `↑↓` | 配置表单字段导航 |
 | `Ctrl+S` | 保存配置 |
 | `j/k/PgUp/PgDn/g/G` | 日志滚动 |
@@ -249,9 +269,11 @@ translate:
 LspProxy/
 ├── cmd/
 │   ├── root.go          # 根命令，--config 全局标志
-│   └── run.go           # 代理模式 & TUI 模式、日志初始化
+│   ├── run.go           # 代理模式 & TUI 模式、日志初始化
+│   └── version.go       # version 子命令
 ├── internal/
 │   ├── config/          # 配置加载/保存（YAML + viper）
+│   ├── glossary/        # 术语词汇本（含内嵌 builtin 词库 + 热重载）
 │   ├── lsp/
 │   │   ├── jsonrpc.go   # LSP Content-Length 帧读写
 │   │   ├── message.go   # JSON-RPC 消息类型
@@ -261,14 +283,18 @@ LspProxy/
 │   ├── proxy/
 │   │   └── proxy.go     # 子进程管理、双向消息转发
 │   └── translate/
-│       ├── engine.go    # Engine 接口 + LRU 内存缓存
-│       ├── new.go       # 翻译引擎工厂函数
-│       ├── google.go    # Google 免费翻译
-│       ├── openai.go    # OpenAI 兼容 API
-│       └── dict.go      # 磁盘 JSON 词典 + 三级缓存
+│       ├── engine.go             # Engine 接口 + LRU 内存缓存
+│       ├── new.go                # 翻译引擎工厂函数
+│       ├── google.go             # Google 免费翻译
+│       ├── openai.go             # OpenAI 兼容 API
+│       ├── dict.go               # 磁盘 JSON 词典 + 三级缓存
+│       ├── singleflight_engine.go # 并发请求合并装饰器
+│       ├── prompt.go             # 提示词模板加载与热重载
+│       └── template.go           # 诊断消息模板化翻译
 ├── tui/
-│   └── app.go           # Bubble Tea TUI（三标签页）
-└── website/             # Next.js 文档网站
+│   ├── app.go           # Bubble Tea TUI（6 个标签页）
+│   └── styles/          # lipgloss 样式常量
+└── website/             # Astro 文档网站
 ```
 
 **分层职责（关注点严格分离）：**
@@ -301,7 +327,7 @@ go test ./...
 go test ./... -race
 
 # 构建
-go build -o lsp-proxy .
+go build -o LspProxy .
 ```
 
 ### 文档网站开发
@@ -321,6 +347,16 @@ bun run build    # 生产构建
 - **降级优先**：磁盘词典失败 → 纯内存缓存；翻译失败 → 透传原文；任何环节故障都不中断代理主流程
 - **并发安全**：翻译 goroutine 与写出 goroutine 通过 channel 解耦，读取循环永不阻塞，并发翻译上限 32
 - **协议透明**：仅修改文档字段内容，方法名、ID、其他所有字段原样保留
+
+---
+
+## 致谢
+
+本项目基于 [zerx-lab/LspProxy](https://github.com/zerx-lab/LspProxy) 开发，感谢原作者 [@zerx-lab](https://github.com/zerx-lab) 的贡献。
+
+## 许可证
+
+[MIT License](LICENSE) — Copyright (c) 2026 zerx-lab, SantaChains
 
 ---
 

@@ -55,7 +55,7 @@ staticcheck ./...
 
 ## 测试命令
 
-项目目前没有测试文件（`_test.go`）。添加测试时遵循以下约定：
+项目已有部分测试文件（`_test.go`），主要覆盖纯函数和缓存逻辑。添加测试时遵循以下约定：
 
 ```bash
 # 运行所有测试
@@ -101,7 +101,7 @@ bun run build     # 生产构建
 ```
 LspProxy/
 ├── main.go                  # 入口：调用 cmd.Execute()
-├── go.mod                   # 模块名 LspProxy，go 1.26.1
+├── go.mod                   # 模块名 LspProxy，go 1.25.0
 ├── cmd/
 │   ├── root.go              # 根命令，--config 全局标志
 │   └── run.go               # 代理模式 & TUI 模式、日志初始化
@@ -113,16 +113,20 @@ LspProxy/
 │   │   └── handler.go       # 消息处理器（翻译调度、缓存快速路径）
 │   ├── markdown/splitter.go # Markdown 分割：Text vs Code 片段
 │   ├── proxy/proxy.go       # 代理核心：子进程管理、双向消息转发
+│   ├── glossary/            # 术语词汇本（含内嵌 builtin 词库 + 热重载）
 │   └── translate/
-│       ├── engine.go        # Engine 接口 + LRU 内存缓存（CachedEngine）
-│       ├── new.go           # 工厂函数：创建三级缓存引擎
-│       ├── google.go        # Google 免费翻译 API
-│       ├── openai.go        # OpenAI 兼容 API（DeepSeek/Qwen/Ollama）
-│       └── dict.go          # DiskDict（JSON 词典）+ 三级缓存
+│       ├── engine.go             # Engine 接口 + LRU 内存缓存（CachedEngine）
+│       ├── new.go                # 工厂函数：创建四级缓存引擎
+│       ├── google.go             # Google 免费翻译 API
+│       ├── openai.go             # OpenAI 兼容 API（DeepSeek/Qwen/Ollama）
+│       ├── dict.go               # DiskDict（JSON 词典）+ 三级缓存
+│       ├── singleflight_engine.go # 并发请求合并装饰器
+│       ├── prompt.go             # 提示词模板加载与热重载
+│       └── template.go           # 诊断消息模板化翻译
 ├── tui/
-│   ├── app.go               # Bubble Tea Model/Update/View
+│   ├── app.go               # Bubble Tea Model/Update/View（6 个标签页）
 │   └── styles/styles.go     # lipgloss 样式常量
-└── website/                 # 文档网站
+└── website/                 # Astro 文档网站
 ```
 
 **层级职责（关注点严格分离）：**
@@ -240,7 +244,7 @@ if err != nil {
 }
 ```
 
-**三级缓存顺序：** 内存 LRU → 磁盘 JSON 词典 → 在线翻译 API
+**四级缓存顺序：** 词汇本 → 内存 LRU → 磁盘 JSON 词典 → 在线翻译 API
 
 **Markdown 分割原则：** 调用 `markdown.Split()` 后只翻译 `KindText` 片段，`KindCode` 原样保留。
 
@@ -257,4 +261,4 @@ if err != nil {
 | `github.com/charmbracelet/bubbletea` | TUI 框架（MVU 架构） |
 | `github.com/charmbracelet/lipgloss` | TUI 样式 |
 | `github.com/charmbracelet/bubbles` | TUI 组件（viewport、textinput） |
-| `golang.org/x/net` | 网络工具（HTTP 客户端辅助） |
+| `golang.org/x/sync` | 并发工具（singleflight 请求合并） |

@@ -1,4 +1,4 @@
-module github.com/zerx-lab/LspProxy
+module github.com/SantaChains/LspProxy
 
 go 1.25.0
 

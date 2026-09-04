@@ -38,7 +38,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/pelletier/go-toml/v2"
 
-	"github.com/zerx-lab/LspProxy/internal/glossary/builtin"
+	"github.com/SantaChains/LspProxy/internal/glossary/builtin"
 )
 
 // ─────────────────────────────────────────────
