@@ -82,7 +82,12 @@ func New(cfg *config.Config, lspName string, logger *slog.Logger) (Engine, error
 	}
 
 	g := glossary.New(glossaryDir, lspNames, logger)
-	return glossary.NewGlossaryEngine(base, g, lspName, logger), nil
+	glossaryEngine := glossary.NewGlossaryEngine(base, g, lspName, logger)
+
+	// ── 内置高频短语词典层（最外层，零延迟）──
+	// LSP 文档中大量固定短语（Returns、Parameters 等）直接查表返回，
+	// 不经过词汇本/缓存/API。
+	return NewPhraseEngine(glossaryEngine), nil
 }
 
 // buildEngines 根据配置构建在线引擎列表。

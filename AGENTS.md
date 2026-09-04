@@ -62,8 +62,8 @@ type Engine interface {
 }
 ```
 
-实现：GoogleEngine（google.go）、OpenAIEngine（openai.go）。
-装饰器：CachedEngine（内存 LRU）、DictEngine（磁盘 JSON 词典）、SingleflightEngine（并发合并）、FallbackEngine（多引擎自动降级）、GlossaryEngine（术语词汇本）。
+实现：GoogleEngine（google.go）、MyMemoryEngine（mymemory.go，免费国内可达）、OpenAIEngine（openai.go）。
+装饰器：PhraseEngine（内置高频短语词典，最外层零延迟查表）、CachedEngine（内存 LRU）、DictEngine（磁盘 JSON 词典）、SingleflightEngine（并发合并）、FallbackEngine（免费引擎并发竞速 + AI 引擎串行兜底，含熔断）、GlossaryEngine（术语词汇本）。
 工厂：translate.New(cfg, lspName, logger) 返回组装好的完整引擎链路。
 
 ### lsp.Handler（消息处理核心）
@@ -141,7 +141,9 @@ forwardLspToClient：ReadMessage → BaseMessage 解析 → handler.ProcessServe
 
 ## 架构模式
 
-引擎链路（外到内）：GlossaryEngine → SingleflightEngine → DictEngine（内存LRU + 磁盘词典）→ FallbackEngine → 在线 API。
+引擎链路（外到内）：PhraseEngine（内置短语词典）→ GlossaryEngine → SingleflightEngine → DictEngine（内存LRU + 磁盘词典）→ FallbackEngine → 在线 API。
+
+PhraseEngine：内置高频短语词典（Returns、Parameters、Examples 等），完整文本匹配则零延迟返回，不走后续任何层。仅匹配 ≤80 字符的短文本。
 
 FallbackEngine：前 N 个免费引擎（Google、MyMemory）并发竞速，首个成功立即返回；全部失败后串行尝试 AI 引擎（OpenAI），避免浪费配额。免费引擎无需配置，AI 引擎需 api_key。
 
