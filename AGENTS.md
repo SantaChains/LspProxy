@@ -35,7 +35,16 @@ go install .
 
 # 指定配置文件
 ./LspProxy --config /path/to/config.yaml -- rust-analyzer
+
+# 以 LSP 名称自调用（无需 wrapper 脚本，Windows 推荐）
+# 将 LspProxy 复制为 rust-analyzer.exe，VSCode server.path 直接指向该副本
+# LspProxy 会检测自身名称，自动代理真实 rust-analyzer，并跳过自身副本避免递归
+cp LspProxy rust-analyzer
+./rust-analyzer              # 等价于 ./LspProxy -- rust-analyzer
 ```
+
+> 自调用模式下，真实 LSP 须在 PATH 中（且不与副本同目录），或在副本同目录放置 `<lsp名>.real(.exe)`。
+> 实现位于 `main.go` 的 `detectLSPName` 与 `internal/proxy/proxy.go` 的 `resolveRealLSP`。
 
 ## Lint / Format 命令
 

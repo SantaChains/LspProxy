@@ -61,6 +61,11 @@ go install github.com/SantaChains/LspProxy@latest
 
 要求 Go 1.25+。
 
+构建后运行 `LspProxy --version`，版本号会自动识别：
+- `go install github.com/SantaChains/LspProxy@latest` → 显示模块版本（含 commit 与日期）
+- 本地 `go build` → 从 git 元数据读取 commit 与日期
+- release 构建（`-ldflags` 注入）→ 显示语义化版本号
+
 ---
 
 ## 快速开始
