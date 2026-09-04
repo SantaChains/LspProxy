@@ -119,7 +119,7 @@ require('lspconfig').rust_analyzer.setup({
 })
 ```
 
-hover 触发：默认绑定 `K`，或 `:lua vim.lsp.buf.hover()`。LspProxy 只拦截翻译内容，不影响 hover 触发机制。
+hover 触发：默认绑定大写 `K`（不是小写 `k`，`k` 是上移光标），或 `:lua vim.lsp.buf.hover()`。LspProxy 只拦截翻译内容，不影响 hover 触发机制。
 
 clangd 示例：
 

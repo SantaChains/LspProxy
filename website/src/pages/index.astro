@@ -6,7 +6,7 @@ import Footer from '../components/Footer.astro';
 const lspServers = ['rust-analyzer', 'clangd', 'gopls', 'pyright', 'tsserver', 'lua_ls', 'jdtls', 'kotlin-ls', 'cssls', 'html', 'jsonls', 'marksman', 'taplo', 'zls', 'eslint'];
 const lspScrollItems = [...lspServers, ...lspServers];
 
-const engines = ['google', 'openai', 'deepseek', 'qwen', 'ollama'];
+const engines = ['google（免费）', 'mymemory（免费）', 'openai（兼容 deepseek/qwen/ollama）'];
 
 const features = [
   {
@@ -18,9 +18,9 @@ const features = [
   },
   {
     num: '02',
-    title: '四级缓存',
-    desc: '词汇本 → 内存 LRU → 磁盘 JSON 词典 → 在线 API。已翻译内容毫秒级响应。',
-    extra: '',
+    title: '零延迟预查 + 四级缓存',
+    desc: 'PhraseEngine 内置高频短语零延迟返回，后续查 Glossary → 内存 LRU → 磁盘 JSON 词典 → 在线 API。',
+    extra: 'Phrase → Glossary → LRU → Disk → API',
     extraType: 'cache',
   },
   {
@@ -32,8 +32,8 @@ const features = [
   },
   {
     num: '04',
-    title: '多翻译引擎',
-    desc: 'Google 免费 API、OpenAI、DeepSeek、Qwen、Ollama 本地模型，一键切换。',
+    title: '并发降级引擎',
+    desc: '免费引擎（Google + MyMemory）并发竞速取最快，全部失败自动降级到 AI 接口（DeepSeek/Qwen/Ollama）。含熔断：连续失败 3 次冷却 60s。',
     extra: '',
     extraType: 'engines',
   },
@@ -69,11 +69,9 @@ const configFeatures = [
 ];
 
 const engineRows = [
-  { engine: 'google', cost: '免费', privacy: '云端', quality: '一般', config: '无需', costColor: 'text-green-400' },
-  { engine: 'deepseek', cost: '低价', privacy: '云端', quality: '优秀', config: 'API Key', costColor: 'text-blue-400' },
-  { engine: 'openai', cost: '付费', privacy: '云端', quality: '优秀', config: 'API Key', costColor: 'text-yellow-400' },
-  { engine: 'qwen', cost: '低价', privacy: '云端', quality: '良好', config: 'API Key', costColor: 'text-blue-400' },
-  { engine: 'ollama', cost: '免费', privacy: '本地', quality: '可变', config: '本地部署', costColor: 'text-green-400' },
+  { engine: 'google', cost: '免费', privacy: '云端', quality: '一般', config: '无需', note: '国内不可达', costColor: 'text-green-400' },
+  { engine: 'mymemory', cost: '免费', privacy: '云端', quality: '中', config: '无需', note: '国内可达，5000字/天', costColor: 'text-green-400' },
+  { engine: 'openai（兼容）', cost: '付费', privacy: '云端', quality: '优秀', config: 'API Key', note: 'DeepSeek/Qwen/Ollama 均兼容', costColor: 'text-yellow-400' },
 ];
 
 const archSteps = [
@@ -85,20 +83,20 @@ const archSteps = [
   },
   {
     step: '2',
-    title: '四级缓存查询',
-    desc: '依次查询：① 词汇本（零延迟）② 内存 LRU（微秒级）③ 磁盘 JSON 词典（毫秒级）④ 在线翻译 API（网络请求）。',
+    title: '分层缓存查询',
+    desc: '依次查询：① PhraseEngine 内置短语（零延迟）② Glossary 词汇本 ③ 内存 LRU ④ 磁盘 JSON 词典 ⑤ 在线翻译 API。',
     color: 'text-green-400',
   },
   {
     step: '3',
-    title: '50ms 快速路径',
-    desc: '若缓存未命中，设置 50ms 超时，超时后立即透传原文，同时后台预热缓存。',
+    title: '免费引擎并发竞速',
+    desc: 'Google + MyMemory 同时请求，首个成功立即返回。全部失败后自动降级到 AI 接口。含熔断：连续失败 3 次冷却 60s。',
     color: 'text-yellow-400',
   },
   {
     step: '4',
-    title: 'Markdown 分割翻译',
-    desc: '调用 markdown.Split()，仅翻译 KindText 片段，KindCode 代码块原样保留，防止误译。',
+    title: '两阶段翻译 + Markdown 保护',
+    desc: '50ms 快速路径未命中后进入翻译，Markdown 代码块替换为占位符 $CODE_N$，仅翻译纯文本部分。',
     color: 'text-purple-400',
   },
 ];
@@ -138,13 +136,15 @@ const nvimCodeHtml = `<span class="syntax-keyword">require</span>(<span class="s
   <span class="syntax-var">cmd</span> = { <span class="syntax-string">&quot;LspProxy&quot;</span>, <span class="syntax-string">&quot;--&quot;</span>, <span class="syntax-string">&quot;rust-analyzer&quot;</span> },
 })`;
 
-const vscodeCodeHtml = `{
-  <span class="syntax-string">&quot;rust-analyzer.server.path&quot;</span>:
-    <span class="syntax-string">&quot;/usr/local/bin/lsp-proxy-ra.sh&quot;</span>
-}
+const vscodeCodeHtml = `<span class="syntax-comment"># 1. 复制 LspProxy 为 rust-analyzer.exe（自调用模式）</span>
+<span class="syntax-comment">#    放在独立目录，不要与真实 rust-analyzer 同目录</span>
+<span class="syntax-func">copy</span> <span class="syntax-string">"$env:USERPROFILE\\go\\bin\\LspProxy.exe"</span> <span class="syntax-string">"D:\\lsp-proxy\\rust-analyzer.exe"</span>
 
-<span class="syntax-comment"># lsp-proxy-ra.sh:</span>
-<span class="syntax-var">LspProxy</span> -- rust-analyzer <span class="syntax-string">&quot;$@&quot;</span>`;
+<span class="syntax-comment"># 2. settings.json</span>
+{
+  <span class="syntax-string">&quot;rust-analyzer.server.path&quot;</span>:
+    <span class="syntax-string">&quot;D:\\lsp-proxy\\rust-analyzer.exe&quot;</span>
+}`;
 
 const zedCodeHtml = `{
   <span class="syntax-string">&quot;lsp&quot;</span>: {
@@ -455,6 +455,7 @@ const installCmd = 'go install github.com/SantaChains/LspProxy@latest';
                 <th class="text-left py-3 px-4 font-normal section-label">隐私</th>
                 <th class="text-left py-3 px-4 font-normal section-label">质量</th>
                 <th class="text-left py-3 px-4 font-normal section-label">配置</th>
+                <th class="text-left py-3 px-4 font-normal section-label">备注</th>
               </tr>
             </thead>
             <tbody>
@@ -465,6 +466,7 @@ const installCmd = 'go install github.com/SantaChains/LspProxy@latest';
                   <td class="py-3 px-4" style="color: var(--text-muted);">{row.privacy}</td>
                   <td class="py-3 px-4" style="color: var(--text);">{row.quality}</td>
                   <td class="py-3 px-4" style="color: var(--text-dim);">{row.config}</td>
+                  <td class="py-3 px-4" style="color: var(--text-dim);">{row.note}</td>
                 </tr>
               ))}
             </tbody>
