@@ -1,4 +1,4 @@
-// Package cmd 包含 lsp-proxy 的所有 CLI 命令定义。
+// Package cmd 包含 LspProxy 的所有 CLI 命令定义。
 // 本文件注册根命令的运行逻辑（直接代理模式与 TUI 模式）。
 package cmd
 
@@ -86,7 +86,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	// ── 5. 代理模式：校验参数 ─────────────────────────────────────────────
 	if len(args) == 0 {
 		return fmt.Errorf(
-			"代理模式需要指定 LSP 命令，例如：\n  lsp-proxy -- rust-analyzer\n  lsp-proxy -- clangd --background-index\n\n" +
+			"代理模式需要指定 LSP 命令，例如：\n  LspProxy -- rust-analyzer\n  LspProxy -- clangd --background-index\n\n" +
 				"若要启动管理界面，请使用 --tui 标志",
 		)
 	}

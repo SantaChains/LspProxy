@@ -17,6 +17,10 @@ import (
 	"strings"
 )
 
+// maxContentLength 限制单个 LSP 消息的最大字节数（50MB）。
+// 防止恶意或异常的 LSP 端发送超大 Content-Length 头部导致 make([]byte, N) 内存耗尽崩溃。
+const maxContentLength = 50 * 1024 * 1024
+
 // RawMessage 是一个原始 JSON-RPC 消息的别名，保留为 json.RawMessage 以便后续按需解析。
 type RawMessage = json.RawMessage
 
@@ -70,6 +74,11 @@ func ReadMessage(r *bufio.Reader) ([]byte, error) {
 	// 必须找到 Content-Length
 	if contentLength < 0 {
 		return nil, fmt.Errorf("LSP 帧缺少 Content-Length 头部")
+	}
+
+	// 限制单个消息最大字节数，防止恶意/异常 LSP 端发送超大 Content-Length 导致 OOM
+	if contentLength > maxContentLength {
+		return nil, fmt.Errorf("LSP 消息过大: Content-Length %d 超过上限 %d 字节", contentLength, maxContentLength)
 	}
 
 	// 按声明的长度读取 JSON 正文

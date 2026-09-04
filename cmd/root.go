@@ -1,4 +1,4 @@
-// Package cmd 包含 lsp-proxy 的所有 CLI 命令定义。
+// Package cmd 包含 LspProxy 的所有 CLI 命令定义。
 package cmd
 
 import (
@@ -9,25 +9,25 @@ import (
 // cfgFile 保存用户通过 --config 标志指定的配置文件路径
 var cfgFile string
 
-// rootCmd 是 lsp-proxy 的根命令。
-// 当用户直接执行 lsp-proxy 时，会触发 RunE（在 run.go 中注册）。
+// rootCmd 是 LspProxy 的根命令。
+// 当用户直接执行 LspProxy 二进制时，会触发 RunE（在 run.go 中注册）。
 var rootCmd = &cobra.Command{
-	Use:   "lsp-proxy",
+	Use:   "LspProxy",
 	Short: "LSP 中文翻译代理",
 	Long: `LspProxy 透明代理 LSP 消息，将文档注释实时翻译为中文。
 
 使用方式：
   # 直接运行代理（将 LSP 命令作为参数传入）
-  lsp-proxy -- rust-analyzer
+  LspProxy -- rust-analyzer
 
   # 传入额外参数给 LSP 服务器
-  lsp-proxy -- clangd --background-index
+  LspProxy -- clangd --background-index
 
   # 打开 TUI 管理界面
-  lsp-proxy --tui
+  LspProxy --tui
 
   # 指定翻译引擎
-  lsp-proxy -e openai -- rust-analyzer`,
+  LspProxy -e openai -- rust-analyzer`,
 }
 
 // Execute 是程序入口调用的根命令执行函数。

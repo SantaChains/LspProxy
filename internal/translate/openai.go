@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -259,7 +260,7 @@ func (o *OpenAIEngine) Translate(ctx context.Context, text, targetLang string) (
 
 		// 解析响应
 		var apiResp openAIResponse
-		if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		if err := json.NewDecoder(io.LimitReader(resp.Body, maxHTTPResponseSize)).Decode(&apiResp); err != nil {
 			return "", fmt.Errorf("openai translate: 解析响应失败 (HTTP %d): %w", resp.StatusCode, err)
 		}
 

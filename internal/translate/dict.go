@@ -38,6 +38,7 @@ type DiskDict struct {
 	maxEntries int // 最大条目数，0 表示不限制
 
 	mu         sync.RWMutex
+	flushMu    sync.Mutex               // 序列化所有 flush 操作，防止并发写盘导致文件损坏
 	items      map[string]*list.Element // key → 链表节点
 	order      *list.List               // 头部=最近访问，尾部=最久未访问
 	generation uint64                   // 数据变更的代数计数器，每次 Put/evict 自增
@@ -331,6 +332,11 @@ func (d *DiskDict) load() error {
 // 使用 generation 计数器避免 TOCTOU 竞态：flush 开始时记录当前 generation，
 // 写盘完成后仅当 generation 未被其他 goroutine 推进时才更新 flushedGen。
 func (d *DiskDict) flush() error {
+	// flushMu 序列化所有并发 flush 调用（writeLoop、ClearAll、ClearOlderThan、Close），
+	// 防止多个 goroutine 同时写入同一个 .tmp 文件导致词典文件损坏。
+	d.flushMu.Lock()
+	defer d.flushMu.Unlock()
+
 	d.mu.RLock()
 	gen := d.generation
 	if gen == d.flushedGen {

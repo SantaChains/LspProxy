@@ -82,6 +82,10 @@ const (
 	DefaultMemoryLimit int64 = 30 * 1024 * 1024
 )
 
+// maxHTTPResponseSize 限制翻译 API HTTP 响应体的最大字节数（10MB）。
+// 防止恶意或异常的 API 端点返回超大响应导致 OOM。
+const maxHTTPResponseSize = 10 * 1024 * 1024
+
 // CachedEngine 是带 LRU 缓存的翻译引擎包装器。
 // 缓存上限由内存字节数控制（默认 30MB），而非条目数量。
 // 相同的原文 + 目标语言组合命中缓存时，直接返回缓存结果，不再调用底层引擎。

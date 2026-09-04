@@ -362,16 +362,6 @@ func (h *Handler) ProcessServerMessage(
 
 	switch {
 	case msg.IsResponse():
-		// 拦截代理自己发出的 workspace/diagnostic/refresh 响应，静默丢弃
-		h.mu.Lock()
-		_, isRefresh := h.refreshIDs[idKey(msg.ID)]
-		if isRefresh {
-			delete(h.refreshIDs, idKey(msg.ID))
-		}
-		h.mu.Unlock()
-		if isRefresh {
-			return nil, nil
-		}
 		return h.processResponse(ctx, &msg, raw, asyncPush)
 	case msg.IsNotification():
 		return h.processNotification(ctx, &msg, raw, asyncPush)

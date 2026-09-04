@@ -73,7 +73,7 @@ func (g *GoogleEngine) Translate(ctx context.Context, text, targetLang string) (
 	//   ...
 	// ]
 	var raw []any
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxHTTPResponseSize)).Decode(&raw); err != nil {
 		return "", fmt.Errorf("google translate: 解析响应失败: %w", err)
 	}
 

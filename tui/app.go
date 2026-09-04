@@ -571,11 +571,17 @@ func (m Model) handleConfigKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// 强制保存（部分终端可能拦截，优先用方向键 + Enter）
 		return m.doSaveConfig()
 
-	case "4", "5", "6":
+	case "1", "3", "4", "5", "6":
 		// 仅在焦点落于保存按钮（非输入框）时才切换标签；
 		// 否则透传给输入框，避免干扰数字输入。
 		if m.focusIdx >= numConfigInputs {
 			switch msg.String() {
+			case "1":
+				m.blurAll()
+				m.activeTab = TabStatus
+				return m, nil
+			case "3":
+				return m.switchToLog()
 			case "4":
 				return m.switchToPrompt()
 			case "5":
@@ -996,9 +1002,9 @@ func (m Model) helpText() string {
 			modHint = "  •  " + styles.WarnStyle.Render("有未保存修改")
 		}
 		if m.promptSaveFocused {
-			return styles.FocusedInputStyle.Render("Enter 保存") + "  •  Tab/Esc 返回编辑器  •  1/2/3/4 切换标签" + modHint
+			return styles.FocusedInputStyle.Render("Enter 保存") + "  •  Tab/Esc 返回编辑器  •  1-6 切换标签" + modHint
 		}
-		return "Tab 切换到保存按钮  •  Esc 返回  •  1/2/3/4 切换标签" + modHint
+		return "Tab 切换到保存按钮  •  Esc 返回  •  （保存按钮上可用 1-6 切换标签）" + modHint
 	case TabDict:
 		return "↑/↓ 选择  •  Enter 执行  •  R 刷新统计  •  1/2/3/4/6 切换  •  q 退出"
 	case TabGlossary:

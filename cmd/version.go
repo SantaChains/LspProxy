@@ -73,7 +73,7 @@ func SetVersionInfo(version, commit, date string) {
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "显示版本信息",
-	Long:  "显示 lsp-proxy 的版本号、构建 commit 和构建日期。",
+	Long:  "显示 LspProxy 的版本号、构建 commit 和构建日期。",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		printVersion()
@@ -90,7 +90,7 @@ func printVersion() {
 	if date == "" {
 		date = "unknown"
 	}
-	fmt.Printf("lsp-proxy %s\n", buildVersion)
+	fmt.Printf("LspProxy %s\n", buildVersion)
 	fmt.Printf("  commit : %s\n", commit)
 	fmt.Printf("  date   : %s\n", date)
 }
