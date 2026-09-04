@@ -176,6 +176,11 @@ LspProxy 启动时检测到自身名为 `rust-analyzer`，自动在 PATH 中查�
 > { "clangd.path": "D:\\tools\\lsp-proxy\\clangd.exe" }
 > ```
 
+> **clangd 注意事项：**
+> - `clangd.arguments` 只能放 clangd 自身参数（`--background-index`、`--clang-tidy` 等），**不要放编译器参数**（如 `-Wno-unused-value`、`-std=c++17`），否则 clangd 会因未知参数崩溃。
+> - 编译参数应放在 `compile_commands.json` 或 `compile_flags.txt` 中，由 clangd 自动读取。
+> - CMake 项目生成编译数据库：`cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON`，再将 `build/compile_commands.json` 链接到项目根目录。
+
 ***
 
 ## 配置
