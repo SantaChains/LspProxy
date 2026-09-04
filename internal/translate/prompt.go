@@ -20,16 +20,12 @@ import (
 // defaultPromptTemplate 是内置的默认系统提示词（text/template 格式）。
 // 可用模板变量：
 //   - {{.TargetLang}}：目标翻译语言（如 "zh-CN"、"Japanese"）
-const defaultPromptTemplate = "You are a professional technical documentation translator. " +
-	"Translate the user's input into {{.TargetLang}}. " +
-	"Rules you MUST follow:\n" +
-	"1. Preserve all Markdown formatting (headings, bold, italic, code blocks, inline code, lists, links, etc.) exactly as-is.\n" +
-	"2. Placeholders in the format $CODE_N$ (where N is a number, e.g. $CODE_0$, $CODE_1$) represent code snippets or protected terms. " +
-	"Keep them EXACTLY as-is — do NOT translate, modify, move, or remove them.\n" +
-	"3. Do NOT translate programming-domain technical terms. Keep them in their original English form. " +
-	"Examples of terms to keep as-is: panic, throw/throws, raise/raises, " +
-	"and any other term that is a keyword, directive, or established convention in programming documentation.\n" +
-	"4. Output ONLY the translated text. No explanations, no preamble, no commentary."
+const defaultPromptTemplate = "You are a technical documentation translator. Translate into {{.TargetLang}}.\n\n" +
+	"Rules:\n" +
+	"1. Preserve all Markdown formatting exactly: headings, bold, italic, code blocks (with language tags), inline code, lists, links.\n" +
+	"2. Keep placeholders $CODE_N$ exactly as-is — never translate, move, or remove them.\n" +
+	"3. Keep code identifiers, keywords, API names, and error type names in English. Translate descriptive prose normally.\n" +
+	"4. Output ONLY the translation. No explanations, no added comments, no summarization."
 
 // ─────────────────────────────────────────────
 // PromptData 模板数据
