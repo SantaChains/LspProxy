@@ -2,28 +2,28 @@
 
 ## 项目是什么
 
-LSP 中文翻译代理。以透明代理插入编辑器与真实 LSP 进程之间，把 hover、completion、diagnostics、signatureHelp 中的英文文档实时翻译为中文。
+LSP 中文翻译代理。透明代理插入编辑器与真实 LSP 进程之间，把 hover、completion、diagnostics、signatureHelp 中的英文文档实时翻译为中文。
 
-数据流：编辑器 stdin → forwardClientToLsp → lsp stdin；lsp stdout → forwardLspToClient（翻译）→ 编辑器 stdout。
+数据流：编辑器 stdin → forwardClientToLsp → lsp stdin；lsp stdout → forwardLspToClient（Handler 翻译）→ 编辑器 stdout。
 
 ***
 
 ## 常用命令
 
-构建与运行：
+构建运行：
 
 ```
 go build -o LspProxy .
 go install .
 ./LspProxy -- rust-analyzer          # 代理模式
-./LspProxy --tui                      # TUI 管理界面
-./LspProxy -e openai -- clangd        # 指定引擎
-./LspProxy --config /path/to/config.yaml -- rust-analyzer
+./LspProxy --tui                      # TUI
+./LspProxy -e openai -- clangd
+./LspProxy --config /path -- rust-analyzer
 ```
 
-自调用模式（Windows 推荐，免 wrapper 脚本）：把 LspProxy 复制为目标 LSP 名（如 rust-analyzer.exe），LspProxy 检测自身名称后自动代理真实 LSP。真实 LSP 须在 PATH 中且不与副本同目录，或在副本同目录放 `<lsp名>.real(.exe)`。实现见 main.go detectLSPName 和 internal/proxy/proxy.go resolveRealLSP。
+自调用模式（Windows 推荐）：复制 LspProxy 为 rust-analyzer.exe，VSCode server.path 指向它。LspProxy 检测自身名称自动代理真实 LSP，跳过自身副本防递归。真实 LSP 须在 PATH 中且不与副本同目录，或同目录放 `<lsp名>.real(.exe)`。实现：main.go detectLSPName，internal/proxy/proxy.go resolveRealLSP。
 
-测试与检查：
+测试检查：
 
 ```
 go test ./...
@@ -32,11 +32,7 @@ go vet ./...
 go fmt ./...
 ```
 
-网站：
-
-```
-cd website && bun install && bun run build
-```
+网站：`cd website && bun install && bun run build`
 
 ***
 
@@ -55,48 +51,147 @@ cd website && bun install && bun run build
 
 ***
 
-## 编码约束
+## 核心接口与类型
 
-导入分三组，组间空行：标准库 → 第三方 → 项目内部包。
+### translate.Engine（翻译引擎接口，所有后端实现此接口）
 
-命名：
+```go
+type Engine interface {
+    Translate(ctx context.Context, text, targetLang string) (string, error)
+    Name() string
+}
+```
 
-- 包名小写单词，与目录同名
+实现：GoogleEngine（google.go）、OpenAIEngine（openai.go）。
+装饰器：CachedEngine（内存 LRU）、DictEngine（磁盘 JSON 词典）、SingleflightEngine（并发合并）、GlossaryEngine（术语词汇本）。
+工厂：translate.New(cfg, lspName, logger) 返回组装好的完整引擎链路。
 
-- 类型/接口/公开函数 PascalCase，私有函数/变量 camelCase
+### lsp.Handler（消息处理核心）
 
-- 公开常量 PascalCase，私有常量 camelCase
+```go
+func NewHandler(engine translate.Engine, targetLang string, logger *slog.Logger,
+    translationTimeoutMs int, displayMode config.DisplayMode) *Handler
+```
 
-- 文件名小写下划线
+关键方法：
 
-错误处理：用 `%w` 包装；翻译失败必须透传原文，绝不丢弃 LSP 消息；初始化失败优先降级而非中止；有意忽略错误加 `//nolint:errcheck // 原因`。
+- ProcessServerMessage(msg, raw, asyncPush) → 处理 LSP 服务端所有消息
 
-类型：
+- InterceptProxyResponse(msg) → 判断响应是否需要翻译
 
-- 多态 JSON 字段用 `json.RawMessage` 延迟解析
+- TrackRequest / popInfo → 追踪请求方法，用于响应分发
+  翻译方法：translateHover、translateCompletion、translateSignatureHelp、translateDiagnostics、translateResolvedItem。
 
-- 有序枚举用 `iota`
+### lsp.BaseMessage（JSON-RPC 消息）
 
-- 并发保护用 `sync.Mutex`/`sync.RWMutex`，不用 channel 模拟锁
+字段：JSONRPC, ID, Method, Params, Result, Error。
+方法：IsRequest()、IsNotification()、IsResponse()。
 
-- 字符串拼接用 `strings.Builder`
+### lsp 协议类型
 
-注释：统一简体中文；包级注释必须有；公开函数必须有 godoc 注释；不写装饰性分隔符。
+MarkupContent {Kind, Value}、HoverResult、CompletionItem、CompletionList、SignatureHelp、Diagnostic、PublishDiagnosticsParams、DocumentDiagnosticReport。
+
+### jsonrpc 帧读写
+
+```go
+func ReadMessage(r *bufio.Reader) ([]byte, error)   // 读 Content-Length 帧
+func WriteMessage(w io.Writer, data []byte) error    // 写 Content-Length 帧
+```
+
+### markdown 分割
+
+```go
+func Split(text string) []Segment          // 分割为 KindText / KindCode
+func Join(segments []Segment) string
+func Protect(text string) (masked string, codes []string)  // 代码占位符保护
+func Restore(masked string, codes []string) string
+```
+
+Segment{Kind SegmentKind, Content string}，KindText=0, KindCode=1。占位符格式 `$CODE_n$`。
+
+### proxy.Proxy
+
+```go
+func New(cfg *config.Config, engine translate.Engine, logger *slog.Logger) *Proxy
+func (p *Proxy) Run(ctx context.Context, command string, args []string) error
+```
+
+内部 goroutine：forwardClientToLsp、forwardLspToClient。LSP 崩溃时 notifyLspCrash 向编辑器发 window/showMessage + 解除挂起请求。
+
+### glossary.Glossary
+
+```go
+func New(dir string, lspNames []string, logger *slog.Logger) *Glossary
+func (g *Glossary) Lookup(text, lspName string) (string, bool)
+```
+
+支持文件热重载（fsnotify watcher）。文件名 = LSP 可执行名（rust-analyzer.toml），\_global.toml 为全局。
+
+***
+
+## 调用链
+
+启动：main.go → cmd.Execute() → runProxy() → config.Load() → translate.New() → proxy.New() → proxy.Run()
+
+Run 内部：exec 真实 LSP → lsp.NewHandler → 启动 forwardClientToLsp / forwardLspToClient 两个 goroutine。
+
+forwardLspToClient：ReadMessage → BaseMessage 解析 → handler.ProcessServerMessage → 需要翻译则走两阶段翻译 → WriteMessage 到编辑器 stdout。
 
 ***
 
 ## 架构模式
 
-翻译引擎链路（从外到内）：GlossaryEngine → SingleflightEngine → DictEngine（内存 LRU + 磁盘词典）→ 在线 API。
+引擎链路（外到内）：GlossaryEngine → SingleflightEngine → DictEngine（内存LRU + 磁盘词典）→ 在线 API。
 
-缓存查询顺序：LSP 专属词汇本 → 全局词汇本 → 内存 LRU → 磁盘 JSON 词典 → 在线翻译 API。词汇本命中是纯内存操作，不经过 singleflight。
+缓存查询顺序：LSP 专属词汇本 → 全局词汇本 → 内存 LRU → 磁盘 JSON 词典 → 在线翻译 API。词汇本命中纯内存，不经 singleflight。
 
-翻译响应两阶段：第一阶段 50ms（cacheCheckTimeout）等待缓存命中；未命中则进入第二阶段，继续等待至 translationTimeout（默认 600ms，0 表示无限等待）。diagnostics 走异步翻译，先返回原文再推送中文。
+翻译响应两阶段：第一阶段 cacheCheckTimeout=50ms 等缓存命中；未命中进入第二阶段等到 translationTimeout（默认 600ms，0 无限等待）。超时返回原文，后台 goroutine 继续翻译预热缓存。diagnostics 走异步：先返回原文，翻译完成后 asyncPush 推送中文（拉取式诊断额外发 workspace/diagnostic/refresh）。
 
-Markdown 分割：调用 markdown.Split() 后只翻译 KindText 片段，KindCode 原样保留，用占位符 `$CODE_n$` 还原。
+Markdown 分割：Split() 后只翻译 KindText，KindCode 用 Protect/Restore 占位符保护。
+
+***
+
+## 配置默认值
+
+| 项                          | 默认值                                 | 说明                                                 |
+| -------------------------- | ----------------------------------- | -------------------------------------------------- |
+| translate.engine           | google                              | google / openai                                    |
+| proxy.target\_lang         | zh-CN                               | 目标语言                                               |
+| proxy.display\_mode        | translation\_only                   | translation\_only / bilingual / bilingual\_compare |
+| proxy.cache\_size          | 30                                  | 内存 LRU 上限 MB                                       |
+| proxy.dict\_max\_entries   | 100000                              | 磁盘词典最大条目                                           |
+| proxy.translation\_timeout | 600                                 | 翻译等待超时 ms，0 无限                                     |
+| proxy.glossary\_dir        | \~/.local/share/lsp-proxy/glossary/ | 词汇本目录                                              |
+| log.level                  | info                                | debug/info/warn/error                              |
+
+默认路径：config \~/.config/lsp-proxy/config.yaml，dict \~/.local/share/lsp-proxy/dict.json，log \~/.local/share/lsp-proxy/proxy.log。
+
+***
+
+## 扩展点
+
+加新翻译引擎：实现 translate.Engine 接口，在 translate.New 的 switch 中注册。
+
+加新 LSP 消息翻译：在 handler.ProcessServerMessage 中根据 method/响应类型分发，新增 translateXxx 方法，走 handleResponseWithFastPath 两阶段流程。
+
+加新 LSP 支持：无需改代码，LSP 名称作为 lspName 传给 translate.New，自动加载对应词汇本（若存在）。
+
+***
+
+## 编码约束
+
+导入分三组，组间空行：标准库 → 第三方 → 项目内部包。
+
+命名：包名小写与目录同名；类型/接口/公开函数 PascalCase；私有 camelCase；文件名小写下划线。
+
+错误处理：%w 包装；翻译失败透传原文绝不丢弃 LSP 消息；初始化失败优先降级；有意忽略错误加 //nolint:errcheck // 原因。
+
+类型：多态 JSON 用 json.RawMessage 延迟解析；枚举用 iota；并发用 sync.Mutex/RWMutex 不用 channel 模拟锁；字符串拼接用 strings.Builder。
+
+注释：简体中文；包级注释必须有；公开函数必须有 godoc 注释；不写装饰性分隔符。
 
 ***
 
 ## 主要依赖
 
-cobra（CLI）、viper（配置）、bubbletea/lipgloss/bubbles（TUI）、golang.org/x/sync（singleflight）。
+cobra（CLI）、viper（配置）、bubbletea/lipgloss/bubbles（TUI）、golang.org/x/sync（singleflight）、fsnotify（词汇本热重载）。
