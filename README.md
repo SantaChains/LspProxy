@@ -310,9 +310,12 @@ bun run build
 
 ### P0（已完成）
 
-- **FallbackEngine 并发竞速**：免费引擎（Google、MyMemory）并发请求，首个成功立即返回，全部失败后串行降级到 AI 接口，避免串行等待超时
-
-- **新增 MyMemoryEngine**：MyMemory 免费翻译 API，国内可达，无需 API key，匿名每日 5000 字限额
+- **AI 优先策略**：配置了 AI 引擎（api_key + base_url + model）时跳过免费引擎，直接用 AI；未配置才用 Google + MyMemory 免费兜底
+- **段落翻译并发**：hover 文档拆成多段后并发翻译（最多 4 个并发），总延迟 ≈ max(单段延迟) 而非 N × 单段延迟
+- **OpenAI 提示词一致性**：删除 openai.go 的旧版 systemPrompt，改为渲染 defaultPromptTemplate，避免两份提示词漂移
+- **temperature 0 + max_tokens**：翻译任务 temperature 设为 0（确定性最高），加 max_tokens=原文长度+100 防浪费
+- **FallbackEngine 并发竞速**：免费引擎（Google、MyMemory）并发请求，首个成功立即返回
+- **新增 MyMemoryEngine**：MyMemory 免费翻译 API，国内可达，无需 API key
 
 ### P1（已完成）
 

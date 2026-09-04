@@ -92,32 +92,38 @@ func New(cfg *config.Config, lspName string, logger *slog.Logger) (Engine, error
 
 // buildEngines 根据配置构建在线引擎列表。
 //
-// 策略：免费引擎始终优先（并发竞速），AI 引擎作为串行兜底。
-//   - 免费组：Google、MyMemory（无需配置，国内可达性不同，并发取最快）
-//   - AI 组：OpenAI 兼容引擎（需配置 api_key，仅在免费组全部失败时使用）
+// 策略：优先使用用户配置的 AI 引擎（零额外延迟、翻译质量高），
+// 仅在未配置 AI 时才使用免费引擎作为兜底。
 //
-// 这样即使 Google 在国内不可达，MyMemory 仍能快速返回；两者都失败才调用 AI。
-// 返回值第二个参数为并发引擎数量（免费组大小）。
+//   - 配置了 AI：engine = [AI]，不包装 FallbackEngine（单个引擎直接返回）
+//   - 未配置 AI：engine = [Google → MyMemory]，并发竞速取最快
+//
+// 这样避免了"配了 AI 还要等免费引擎超时才降级"的浪费，
+// 也避免了并发竞速消耗 MyMemory 匿名配额（5000 字/天）。
 func buildEngines(cfg *config.Config, logger *slog.Logger) ([]Engine, int, error) {
 	oaiConfigured := cfg.Translate.OpenAI.APIKey != "" &&
 		cfg.Translate.OpenAI.BaseURL != "" &&
 		cfg.Translate.OpenAI.Model != ""
 
-	// 免费引擎组（并发竞速）
-	freeEngines := []Engine{
-		NewGoogleEngine(),
-		NewMyMemoryEngine(),
-	}
-
 	var engines []Engine
-	engines = append(engines, freeEngines...)
+	var concurrent int
 
-	// AI 引擎组（串行兜底，避免浪费配额）
 	if oaiConfigured {
-		engines = append(engines, buildOpenAIEngine(cfg, logger))
+		// 用户显式配置了 AI → 直接用 AI，跳过免费引擎
+		engines = []Engine{buildOpenAIEngine(cfg, logger)}
+		concurrent = 0 // 单引擎无需 FallbackEngine
+		logger.Info("已配置 AI 引擎，跳过免费翻译",
+			slog.String("engine", engines[0].Name()),
+		)
+	} else {
+		// 未配置 AI → 用免费引擎兜底
+		logger.Info("未配置 AI 引擎，使用免费翻译兜底（Google + MyMemory 并发竞速）")
+		engines = []Engine{
+			NewGoogleEngine(),
+			NewMyMemoryEngine(),
+		}
+		concurrent = len(engines) // 2 个免费引擎并发竞速
 	}
-
-	concurrent := len(freeEngines)
 
 	names := make([]string, len(engines))
 	for i, e := range engines {

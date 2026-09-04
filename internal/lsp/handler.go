@@ -68,6 +68,12 @@ const asyncDiagTimeout = 30 * time.Second
 // 设为 3：允许适度并行，同时避免短时间内打出大量 API 请求触发限流。
 const bgConcurrencyLimit = 3
 
+// paraConcurrencyLimit 限制段落翻译的并发数（前台同步翻译）。
+// 段落翻译是 hover 文档的前台操作，延迟直接影响用户体验。
+// 设为 4：hover 文档通常被拆成 2-5 个段落，4 个并发可全部覆盖。
+// singleflight 层会自动合并相同文本的并发请求，不会重复发 API。
+const paraConcurrencyLimit = 4
+
 // rateLimitCooldown 是收到 rate limit 错误后的熔断冷却期。
 // API 限流窗口通常为 1 分钟，30s 冷却足以覆盖大多数恢复场景。
 const rateLimitCooldown = 30 * time.Second
@@ -1995,57 +2001,90 @@ func (h *Handler) translateTextForBilingual(ctx context.Context, text string) (o
 //   - 其余段落：独立调用翻译引擎（各自作为缓存 key）
 //
 // 翻译失败的段落保留原文（局部降级，不影响其他段落的翻译结果）。
+// translateParagraphs 并发翻译多个段落。
+//
+// 策略：
+//   - 对需要翻译的段落并发调用 engine.Translate（最多 paraConcurrencyLimit 个并发）
+//   - 空白段落、纯占位符段落、已是中文的段落：跳过翻译，直接保留原文
+//   - 结果按原段落索引收集，保证最终拼接顺序不变
+//   - 失败段落保留原文（局部降级）
+//   - 避免串行等待：N 段并发后总延迟 ≈ max(单段延迟)，而非 N × 单段延迟
+//
+// singleflight 层会自动合并相同文本的并发请求（如多份文档都有相同的
+// "Parameters:" 段落），不会重复发 API。
 func (h *Handler) translateParagraphs(ctx context.Context, paragraphs []string) (string, error) {
 	results := make([]string, len(paragraphs))
 
-	// 段落翻译失败计数
-	failCount := 0
-
+	// 预分类：哪些段落需要翻译
+	type paraJob struct {
+		index int
+		text  string
+	}
+	var jobs []paraJob
 	for i, para := range paragraphs {
-		// 检查 context 是否已取消
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-
 		trimmed := strings.TrimSpace(para)
-
-		// 空白段落原样保留
-		if trimmed == "" {
-			results[i] = para
-			continue
+		switch {
+		case trimmed == "":
+			results[i] = para // 空白原样保留
+		case isPlaceholderOnly(trimmed):
+			results[i] = para // 纯占位符跳过
+		case isMostlyChinese(para):
+			results[i] = para // 已是中文跳过
+		default:
+			jobs = append(jobs, paraJob{index: i, text: para})
 		}
-
-		// 纯占位符段落（仅包含 $CODE_N$ 占位符和空白）跳过翻译
-		if isPlaceholderOnly(trimmed) {
-			results[i] = para
-			continue
-		}
-
-		// 已是中文的段落跳过翻译
-		if isMostlyChinese(para) {
-			results[i] = para
-			continue
-		}
-
-		// 翻译该段落
-		translated, err := h.engine.Translate(ctx, para, h.targetLang)
-		if err != nil {
-			h.logger.Debug("段落翻译失败，保留原文",
-				slog.Int("paragraph", i+1),
-				slog.String("error", err.Error()),
-				slog.String("preview", truncate(para, 60)),
-			)
-			results[i] = para // 局部降级
-			failCount++
-			continue
-		}
-		results[i] = translated
 	}
 
-	if failCount > 0 {
+	// 无需翻译的段落直接返回
+	if len(jobs) == 0 {
+		return strings.Join(results, paragraphSep), nil
+	}
+
+	// 并发翻译，限流避免打爆 API
+	sem := make(chan struct{}, paraConcurrencyLimit)
+	var wg sync.WaitGroup
+	var failCount atomic.Int32
+
+	for _, job := range jobs {
+		// context 取消时不再派发新请求
+		if ctx.Err() != nil {
+			// 未派发的段落全部保留原文
+			results[job.index] = job.text
+			continue
+		}
+
+		wg.Add(1)
+		sem <- struct{}{} // 获取并发槽位
+		go func(job paraJob) {
+			defer wg.Done()
+			defer func() { <-sem }() // 释放槽位
+
+			if ctx.Err() != nil {
+				results[job.index] = job.text
+				return
+			}
+
+			translated, err := h.engine.Translate(ctx, job.text, h.targetLang)
+			if err != nil {
+				h.logger.Debug("段落翻译失败，保留原文",
+					slog.Int("paragraph", job.index+1),
+					slog.String("error", err.Error()),
+					slog.String("preview", truncate(job.text, 60)),
+				)
+				results[job.index] = job.text // 局部降级
+				failCount.Add(1)
+				return
+			}
+			results[job.index] = translated
+		}(job)
+	}
+
+	wg.Wait()
+
+	if f := failCount.Load(); f > 0 {
 		h.logger.Debug("段落级翻译部分失败",
 			slog.Int("total", len(paragraphs)),
-			slog.Int("failed", failCount),
+			slog.Int("failed", int(f)),
 		)
 	}
 

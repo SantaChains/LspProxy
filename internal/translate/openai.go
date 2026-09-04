@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"text/template"
 	"time"
 )
 
@@ -190,18 +191,12 @@ type openAIResponse struct {
 // ─────────────────────────────────────────────
 
 // systemPrompt 根据目标语言生成系统提示词。
-// 要求模型：翻译为目标语言、保留 Markdown 格式、保留占位符、只返回翻译结果不要解释。
+// 直接渲染 defaultPromptTemplate，避免与 prompt.go 中的模板内容漂移。
 func systemPrompt(targetLang string) string {
-	return fmt.Sprintf(
-		"You are a professional technical documentation translator. "+
-			"Translate the user's input into %s. "+
-			"Rules you MUST follow:\n"+
-			"1. Preserve all Markdown formatting (headings, bold, italic, code blocks, inline code, lists, links, etc.) exactly as-is.\n"+
-			"2. Placeholders in the format $CODE_N$ (where N is a number, e.g. $CODE_0$, $CODE_1$) represent code snippets. "+
-			"Keep them EXACTLY as-is — do NOT translate, modify, move, or remove them.\n"+
-			"3. Output ONLY the translated text. No explanations, no preamble, no commentary.",
-		targetLang,
-	)
+	tmpl := template.Must(template.New("prompt").Parse(defaultPromptTemplate))
+	var buf strings.Builder
+	_ = tmpl.Execute(&buf, PromptData{TargetLang: targetLang})
+	return buf.String()
 }
 
 // Translate 调用 OpenAI 兼容 API 将 text 翻译为 targetLang 所指定的语言。
@@ -223,8 +218,10 @@ func (o *OpenAIEngine) Translate(ctx context.Context, text, targetLang string) (
 			{Role: "system", Content: sysPrompt},
 			{Role: "user", Content: text},
 		},
-		// 翻译任务使用较低温度，保证输出稳定
-		"temperature": 0.2,
+		// 翻译任务需要高度确定性，temperature 设为 0
+		"temperature": 0,
+		// 限制输出长度，防止模型生成过长翻译浪费 token
+		"max_tokens": len(text) + 100, // 原文长度 + 100 buffer，中文翻译通常与英文长度相近
 	}
 
 	// 注入思考模式控制参数（各提供商格式不同）

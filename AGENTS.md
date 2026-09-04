@@ -145,7 +145,7 @@ forwardLspToClient：ReadMessage → BaseMessage 解析 → handler.ProcessServe
 
 PhraseEngine：内置高频短语词典（Returns、Parameters、Examples 等），完整文本匹配则零延迟返回，不走后续任何层。仅匹配 ≤80 字符的短文本。
 
-FallbackEngine：前 N 个免费引擎（Google、MyMemory）并发竞速，首个成功立即返回；全部失败后串行尝试 AI 引擎（OpenAI），避免浪费配额。免费引擎无需配置，AI 引擎需 api_key。
+引擎策略：配置了 AI 时只用 AI（零延迟、质量高）；未配置 AI 时用免费引擎（Google + MyMemory 并发竞速）兜底。避免配了 AI 还要等免费引擎超时降级的浪费。
 
 缓存查询顺序：LSP 专属词汇本 → 全局词汇本 → 内存 LRU → 磁盘 JSON 词典 → 在线翻译 API。词汇本命中纯内存，不经 singleflight。
 
@@ -199,3 +199,4 @@ Markdown 分割：Split() 后只翻译 KindText，KindCode 用 Protect/Restore �
 ## 主要依赖
 
 cobra（CLI）、viper（配置）、bubbletea/lipgloss/bubbles（TUI）、golang.org/x/sync（singleflight）、fsnotify（词汇本热重载）。
+
