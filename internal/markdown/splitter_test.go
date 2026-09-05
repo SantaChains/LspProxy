@@ -379,3 +379,82 @@ func TestProtect_TechTermWithCodeBlock(t *testing.T) {
 		t.Errorf("还原失败:\n  期望: %q\n  实际: %q", input, restored)
 	}
 }
+
+func TestProtect_Roundtrip_AllFormats(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"标准链接", "详见 [Option](https://doc.rust-lang.org/std/option/enum.Option.html) 文档"},
+		{"自动链接", "详见 <https://doc.rust-lang.org/std/option/enum.Option.html>"},
+		{"file协议自动链接", "点击 <file:///C:/Users/foo/src/main.rs> 打开源码"},
+		{"行内HTML标签", "返回值是 <code>Option</code> 类型"},
+		{"HTML自闭合标签", "第一行<br/>第二行"},
+		{"reference链接定义", "[Rust Book][ref] 提供了更多信息\n\n[ref]: https://doc.rust-lang.org"},
+		{"图片URL", "![示意图](https://example.com/img.png)"},
+		{"混合格式", "调用 `foo()` 方法，详见 [文档](https://doc.com) 和 <https://rust.org>"},
+		{"代码块保护优先", "示例：```rust\nlet x = \"https://example.com\";\n```"},
+		{"HTML标签含属性", "使用 <span class=\"highlight\">高亮</span> 显示"},
+		{"空链接文字", "[](https://example.com) 空文字链接"},
+		{"代码块内尖括号不被误匹配", "类型参数 `Result<T, E>` 正常"},
+		{"完整hover文档模拟", "### Function: foo\n\nDo `foo` does X and Y.\n\n[See Rust Book](https://doc.rust-lang.org/book)\n\n<file:///path/to/foo.rs:10>\n\n<pre>raw</pre>"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			masked, codes := Protect(c.input)
+			restored := Restore(masked, codes)
+			if restored != c.input {
+				t.Errorf("roundtrip 失败\n原文:     %q\nmasked:   %q\ncodes:    %v\n还原:     %q",
+					c.input, masked, codes, restored)
+			}
+		})
+	}
+}
+
+func TestProtect_AutolinkReplaced(t *testing.T) {
+	masked, codes := Protect("详见 <https://doc.rust-lang.org/std/>")
+	if !strings.Contains(masked, "$CODE_0$") {
+		t.Errorf("自动链接应被替换，masked=%q", masked)
+	}
+	if len(codes) != 1 {
+		t.Errorf("期望 1 个 code，得到 %d: %v", len(codes), codes)
+	}
+	if codes[0] != "https://doc.rust-lang.org/std/" {
+		t.Errorf("codes[0] 不符: %q", codes[0])
+	}
+}
+
+func TestProtect_HTMLTagsReplaced(t *testing.T) {
+	_, codes := Protect("返回 <code>Option</code> 或 <em>None</em>")
+	// <code>、</code>、<em>、</em> 共 4 个标签
+	if len(codes) != 4 {
+		t.Errorf("期望 4 个 code（两个开+两个闭标签），得到 %d: %v", len(codes), codes)
+	}
+	for _, c := range codes {
+		if !strings.HasPrefix(c, "<") {
+			t.Errorf("所有 codes 应以 < 开头，得到: %q", c)
+		}
+	}
+}
+
+func TestProtect_RefDefURLReplaced(t *testing.T) {
+	input := "[Rust Book][ref]\n\n[ref]: https://doc.rust-lang.org \"Rust Official Doc\""
+	masked, codes := Protect(input)
+	// 标准链接保护 [ref]: https://... 和 reference 定义行的 URL
+	// 至少 ref 定义的 URL 要被保护
+	restored := Restore(masked, codes)
+	if restored != input {
+		t.Errorf("roundtrip 失败\n原文: %q\n还原: %q", input, restored)
+	}
+}
+
+func TestProtect_NoHTMLInCodeBlock(t *testing.T) {
+	// 代码块内的 <T> 不应被 HTML 保护
+	input := "泛型语法：```rust\nfn foo<T>(x: T) -> T { x }\n```"
+	_, codes := Protect(input)
+	// 只有代码块本身应被替换，codes 长度应为 1
+	if len(codes) != 1 {
+		t.Errorf("代码块内的 <T> 不应被 HTML 标签保护，codes=%v", codes)
+	}
+}

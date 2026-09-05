@@ -376,7 +376,8 @@ func protectMarkdownURLs(masked string, codes []string) (string, []string) {
 
 // autolinkRe 匹配 Markdown 自动链接语法：<scheme://...>。
 // 例如：<https://doc.rust-lang.org/std/option/enum.Option.html>
-//       <file:///path/to/foo.rs>
+//
+//	<file:///path/to/foo.rs>
 var autolinkRe = regexp.MustCompile(`<([a-zA-Z][a-zA-Z0-9+.-]*://[^>\s]+)>`)
 
 // protectAutolinks 将 Markdown 自动链接 <url> 替换为 <$CODE_N$>。
