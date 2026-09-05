@@ -306,20 +306,18 @@ func protectTechTerms(masked string, codes []string) (string, []string) {
 	return result, codes
 }
 
-// Protect 将文本中的所有代码块（围栏代码块和行内代码）、编程技术术语
-// 以及 Markdown 链接 URL 替换为编号占位符。
+// Protect 将文本中的所有代码块、编程技术术语、Markdown 链接 URL、
+// 自动链接 URL 以及行内 HTML 标签替换为编号占位符。
 //
 // 处理顺序：
-//  1. 按 Markdown 结构提取代码块（围栏块、行内代码），替换为 $CODE_N$
-//  2. 在掩码文本上扫描已知技术术语，同样替换为 $CODE_N$（序号延续）
-//  3. 保护 Markdown 链接的 URL 部分（[text](url) → [text]($CODE_N$)），
-//     链接文字可翻译，但 URL 必须原样保留，防止翻译引擎破坏文件链接
+//  1. 代码块（围栏块、行内代码）→ $CODE_N$
+//  2. 编程技术术语（panic/throws/raises）→ $CODE_N$
+//  3. 标准 Markdown 链接的 URL → $CODE_N$（链接文字可翻译）
+//  4. 自动链接 <url> → $CODE_N$
+//  5. 行内 HTML 标签 → $CODE_N$
+//  6. reference-style 链接定义的 URL → $CODE_N$
 //
-// 返回：
-//   - masked: 替换后的文本，可直接送入翻译引擎
-//   - codes:  被提取的原文（代码块 + 技术术语 + 链接 URL），按编号顺序存储，用于 [Restore] 还原
-//
-// 若文本不含任何需要保护的内容，codes 为空切片，masked 等于原文。
+// 返回 codes 切片按编号顺序存储所有被提取的原文，Restore 时按序号还原。
 func Protect(text string) (masked string, codes []string) {
 	// ── 第一步：保护 Markdown 代码块 ──
 	segments := Split(text)
@@ -338,38 +336,98 @@ func Protect(text string) (masked string, codes []string) {
 	// ── 第二步：保护编程技术术语 ──
 	masked, codes = protectTechTerms(masked, codes)
 
-	// ── 第三步：保护 Markdown 链接 URL ──
-	// [text](url) → [text]($CODE_N$)，链接文字可翻译，URL 受保护
+	// ── 第三步：保护 Markdown 标准链接 URL ──
 	masked, codes = protectMarkdownURLs(masked, codes)
+
+	// ── 第四步：保护自动链接 <url> ──
+	// rust-analyzer 文档中大量出现 <https://doc.rust-lang.org/...> 格式
+	masked, codes = protectAutolinks(masked, codes)
+
+	// ── 第五步：保护行内 HTML 标签 ──
+	// LSP hover 中可能出现 <code>、<br>、<em>、<strong> 等标签
+	masked, codes = protectHTMLTags(masked, codes)
+
+	// ── 第六步：保护 reference-style 链接定义的 URL ──
+	// [ref]: https://example.com 中的 URL
+	masked, codes = protectRefDefURLs(masked, codes)
 
 	return masked, codes
 }
 
 // markdownLinkRe 匹配 Markdown 链接和图片的 URL 部分。
-// 覆盖：
-//   - [text](url)     标准链接
-//   - [text](url "title") 带标题链接（title 不保护）
-//   - ![alt](url)     图片
-//   - ![alt](url "title") 带标题图片
-//
-// 策略：只保护括号内的 URL，链接文字保留供翻译。
 var markdownLinkRe = regexp.MustCompile(`(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)`)
 
-// protectMarkdownURLs 将 Markdown 链接中的 URL 替换为占位符。
-// 链接文字保留（可翻译），仅 URL 部分受保护。
+// protectMarkdownURLs 将 Markdown 标准链接 [text](url) 和 ![alt](url) 中的 URL 替换为占位符。
 func protectMarkdownURLs(masked string, codes []string) (string, []string) {
 	return markdownLinkRe.ReplaceAllStringFunc(masked, func(match string) string {
 		sub := markdownLinkRe.FindStringSubmatch(match)
 		if len(sub) < 4 {
 			return match
 		}
-		prefix := sub[1] // "!" 表示图片，空表示普通链接
+		prefix := sub[1] // "!" 表示图片
 		text := sub[2]   // 链接文字（保留，可翻译）
 		url := sub[3]    // URL（保护）
 
 		idx := len(codes)
 		codes = append(codes, url)
 		return fmt.Sprintf("%s[%s]($CODE_%d$)", prefix, text, idx)
+	}), codes
+}
+
+// autolinkRe 匹配 Markdown 自动链接语法：<scheme://...>。
+// 例如：<https://doc.rust-lang.org/std/option/enum.Option.html>
+//       <file:///path/to/foo.rs>
+var autolinkRe = regexp.MustCompile(`<([a-zA-Z][a-zA-Z0-9+.-]*://[^>\s]+)>`)
+
+// protectAutolinks 将 Markdown 自动链接 <url> 替换为 <$CODE_N$>。
+func protectAutolinks(masked string, codes []string) (string, []string) {
+	return autolinkRe.ReplaceAllStringFunc(masked, func(match string) string {
+		sub := autolinkRe.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		idx := len(codes)
+		codes = append(codes, sub[1])
+		return fmt.Sprintf("<$CODE_%d$>", idx)
+	}), codes
+}
+
+// htmlTagRe 匹配行内 HTML 标签（开标签和自闭合标签）。
+// 覆盖：<code>、</code>、<br>、<br/>、<em>、<strong class="x"> 等。
+// 不匹配纯文本中的尖括号（如 Rust 的泛型 <T> 不会在此处出现，
+// 因为 <T> 通常在反引号代码块中已被 Split 保护）。
+var htmlTagRe = regexp.MustCompile(`</?[a-zA-Z][a-zA-Z0-9]*(?:\s[^<>]*)?>`)
+
+// protectHTMLTags 将行内 HTML 标签替换为占位符。
+func protectHTMLTags(masked string, codes []string) (string, []string) {
+	return htmlTagRe.ReplaceAllStringFunc(masked, func(match string) string {
+		idx := len(codes)
+		codes = append(codes, match)
+		return fmt.Sprintf("$CODE_%d$", idx)
+	}), codes
+}
+
+// refDefRe 匹配 reference-style 链接定义的 URL。
+// 格式：[refid]: https://example.com "可选标题"
+var refDefRe = regexp.MustCompile(`(?m)^(\s{0,3}\[[^\]]+\]:\s*)(\S+)(\s+"[^"]*")?\s*$`)
+
+// protectRefDefURLs 将 reference-style 链接定义中的 URL 替换为占位符。
+// 保留 [refid]: 前缀和可选的 title，只保护 URL 部分。
+func protectRefDefURLs(masked string, codes []string) (string, []string) {
+	return refDefRe.ReplaceAllStringFunc(masked, func(match string) string {
+		sub := refDefRe.FindStringSubmatch(match)
+		if len(sub) < 3 {
+			return match
+		}
+		prefix := sub[1] // "[ref]: "
+		url := sub[2]    // URL（保护）
+		suffix := ""
+		if len(sub) > 3 {
+			suffix = sub[3] // 可选的 title
+		}
+		idx := len(codes)
+		codes = append(codes, url)
+		return fmt.Sprintf("%s$CODE_%d$%s", prefix, idx, suffix)
 	}), codes
 }
 
