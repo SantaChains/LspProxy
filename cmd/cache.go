@@ -16,7 +16,7 @@ import (
 var cacheCmd = &cobra.Command{
 	Use:   "cache",
 	Short: "管理磁盘翻译缓存",
-	Long:  `管理 translate.dict_file 磁盘缓存：列出条目、删除单条触发重新翻译、或全部清除。
+	Long: `管理 translate.dict_file 磁盘缓存：列出条目、删除单条触发重新翻译、或全部清除。
 注意：代理运行时无法清除缓存，需先停止 LSP 进程。`,
 }
 
