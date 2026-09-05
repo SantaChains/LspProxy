@@ -213,23 +213,18 @@ type Model struct {
 	dictInfo    *dictInfoMsg // 最近获取的词典统计信息
 
 	// ── 术语词汇本管理视图 ──
-	glossaryDir       string               // 词汇本目录路径
-	glossaryFiles     []glossary.FileInfo  // 词汇本文件列表
-	glossaryCursor    int                  // 文件列表光标位置
-	glossaryTerms     []glossary.TermEntry // 当前选中文件的术语条目
-	glossaryTermFile  string               // 当前正在查看术语的文件名
-	glossaryViewport  viewport.Model       // 术语列表滚动区域
-	glossaryShowTerms bool                 // 是否正在展示术语列表
+	glossaryDir           string               // 词汇本目录路径
+	glossaryFiles         []glossary.FileInfo  // 词汇本文件列表
+	glossaryCursor        int                  // 文件列表光标位置
+	glossaryTerms         []glossary.TermEntry // 当前选中文件的术语条目
+	glossaryTermFile      string               // 当前正在查看术语的文件名
+	glossaryViewport      viewport.Model       // 术语列表滚动区域
+	glossaryShowTerms     bool                 // 是否正在展示术语列表
+	glossaryTermCursor    int                  // 术语列表光标位置
+	glossaryConfirmDelete bool                 // 是否处于二次确认删除状态
 
-	// ── 术语编辑状态 ──
-	glossaryEditMode      bool            // 是否处于编辑模式（术语列表中可移动光标并增删）
-	glossaryTermCursor    int             // 术语列表光标位置（编辑模式下有效）
-	glossaryEditActive    bool            // 保留字段（兼容旧初始化代码，不再实际使用）
-	glossaryEditIsNew     bool            // 保留字段（兼容旧初始化代码，不再实际使用）
-	glossaryEditKeyInput  textinput.Model // 保留字段（兼容旧初始化代码，不再实际使用）
-	glossaryEditValInput  textinput.Model // 保留字段（兼容旧初始化代码，不再实际使用）
-	glossaryEditFocusKey  bool            // 保留字段（兼容旧初始化代码，不再实际使用）
-	glossaryConfirmDelete bool            // 是否正在二次确认删除
+	// ── 术语编辑状态（保留，当前始终为 false，未来可扩展内联编辑） ──
+	glossaryEditMode bool // 是否处于编辑模式
 
 	// ── 搜索状态 ──
 	glossarySearchActive bool            // 是否处于搜索输入模式
@@ -301,15 +296,6 @@ func New(cfg *config.Config, cfgPath string) Model {
 	glossaryVP := viewport.New(80, 20)
 	glossaryVP.SetContent(styles.DimStyle.Render("（选择一个词汇本文件后按 Enter 查看术语）"))
 
-	// 初始化术语编辑输入框（保留兼容旧代码，不再实际使用）
-	keyInput := textinput.New()
-	keyInput.Placeholder = "原文（英文）"
-	keyInput.Width = 40
-
-	valInput := textinput.New()
-	valInput.Placeholder = "译文（中文）"
-	valInput.Width = 40
-
 	// 初始化搜索输入框
 	searchInput := textinput.New()
 	searchInput.Placeholder = "搜索…"
@@ -324,20 +310,18 @@ func New(cfg *config.Config, cfgPath string) Model {
 	ta.ShowLineNumbers = false
 
 	return Model{
-		cfg:                  cfg,
-		cfgPath:              cfgPath,
-		activeTab:            TabStatus,
-		inputs:               inputs,
-		focusIdx:             0,
-		logViewport:          vp,
-		promptArea:           ta,
-		promptPath:           promptFile,
-		dictFile:             dictFile,
-		glossaryDir:          glossaryDir,
-		glossaryViewport:     glossaryVP,
-		glossaryEditKeyInput: keyInput,
-		glossaryEditValInput: valInput,
-		glossarySearchInput:  searchInput,
+		cfg:                 cfg,
+		cfgPath:             cfgPath,
+		activeTab:           TabStatus,
+		inputs:              inputs,
+		focusIdx:            0,
+		logViewport:         vp,
+		promptArea:          ta,
+		promptPath:          promptFile,
+		dictFile:            dictFile,
+		glossaryDir:         glossaryDir,
+		glossaryViewport:    glossaryVP,
+		glossarySearchInput: searchInput,
 	}
 }
 
@@ -1800,41 +1784,6 @@ func (m Model) renderGlossaryTermView() string {
 	}
 
 	return header + searchBar + body
-}
-
-// renderGlossaryEditBox 渲染术语编辑输入框（保留供参考，目前已改为外部编辑器模式）。
-func (m Model) renderGlossaryEditBox() string {
-	title := "新增术语"
-	if !m.glossaryEditIsNew {
-		title = "编辑术语"
-	}
-
-	var sb strings.Builder
-	sb.WriteString("\n  ")
-	sb.WriteString(styles.TitleStyle.Render("── " + title + " ────────────────────────"))
-	sb.WriteString("\n\n")
-
-	// 原文输入框
-	keyLabel := styles.LabelStyle.Render(fmt.Sprintf("  %-10s", "原文"))
-	if m.glossaryEditFocusKey {
-		keyLabel = styles.FocusedInputStyle.Render(fmt.Sprintf("▶ %-10s", "原文"))
-	}
-	sb.WriteString("  ")
-	sb.WriteString(keyLabel)
-	sb.WriteString(m.glossaryEditKeyInput.View())
-	sb.WriteString("\n")
-
-	// 译文输入框
-	valLabel := styles.LabelStyle.Render(fmt.Sprintf("  %-10s", "译文"))
-	if !m.glossaryEditFocusKey {
-		valLabel = styles.FocusedInputStyle.Render(fmt.Sprintf("▶ %-10s", "译文"))
-	}
-	sb.WriteString("  ")
-	sb.WriteString(valLabel)
-	sb.WriteString(m.glossaryEditValInput.View())
-	sb.WriteString("\n\n")
-
-	return sb.String()
 }
 
 // renderGlossaryTerms 将术语条目格式化为 viewport 可显示的文本内容。
