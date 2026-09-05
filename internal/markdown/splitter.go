@@ -306,17 +306,20 @@ func protectTechTerms(masked string, codes []string) (string, []string) {
 	return result, codes
 }
 
-// Protect 将文本中的所有代码块（围栏代码块和行内代码）以及编程技术术语替换为编号占位符。
+// Protect 将文本中的所有代码块（围栏代码块和行内代码）、编程技术术语
+// 以及 Markdown 链接 URL 替换为编号占位符。
 //
 // 处理顺序：
 //  1. 按 Markdown 结构提取代码块（围栏块、行内代码），替换为 $CODE_N$
 //  2. 在掩码文本上扫描已知技术术语，同样替换为 $CODE_N$（序号延续）
+//  3. 保护 Markdown 链接的 URL 部分（[text](url) → [text]($CODE_N$)），
+//     链接文字可翻译，但 URL 必须原样保留，防止翻译引擎破坏文件链接
 //
 // 返回：
 //   - masked: 替换后的文本，可直接送入翻译引擎
-//   - codes:  被提取的原文（代码块 + 技术术语），按编号顺序存储，用于 [Restore] 还原
+//   - codes:  被提取的原文（代码块 + 技术术语 + 链接 URL），按编号顺序存储，用于 [Restore] 还原
 //
-// 若文本不含任何代码块或技术术语，codes 为空切片，masked 等于原文。
+// 若文本不含任何需要保护的内容，codes 为空切片，masked 等于原文。
 func Protect(text string) (masked string, codes []string) {
 	// ── 第一步：保护 Markdown 代码块 ──
 	segments := Split(text)
@@ -335,7 +338,39 @@ func Protect(text string) (masked string, codes []string) {
 	// ── 第二步：保护编程技术术语 ──
 	masked, codes = protectTechTerms(masked, codes)
 
+	// ── 第三步：保护 Markdown 链接 URL ──
+	// [text](url) → [text]($CODE_N$)，链接文字可翻译，URL 受保护
+	masked, codes = protectMarkdownURLs(masked, codes)
+
 	return masked, codes
+}
+
+// markdownLinkRe 匹配 Markdown 链接和图片的 URL 部分。
+// 覆盖：
+//   - [text](url)     标准链接
+//   - [text](url "title") 带标题链接（title 不保护）
+//   - ![alt](url)     图片
+//   - ![alt](url "title") 带标题图片
+//
+// 策略：只保护括号内的 URL，链接文字保留供翻译。
+var markdownLinkRe = regexp.MustCompile(`(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)`)
+
+// protectMarkdownURLs 将 Markdown 链接中的 URL 替换为占位符。
+// 链接文字保留（可翻译），仅 URL 部分受保护。
+func protectMarkdownURLs(masked string, codes []string) (string, []string) {
+	return markdownLinkRe.ReplaceAllStringFunc(masked, func(match string) string {
+		sub := markdownLinkRe.FindStringSubmatch(match)
+		if len(sub) < 4 {
+			return match
+		}
+		prefix := sub[1] // "!" 表示图片，空表示普通链接
+		text := sub[2]   // 链接文字（保留，可翻译）
+		url := sub[3]    // URL（保护）
+
+		idx := len(codes)
+		codes = append(codes, url)
+		return fmt.Sprintf("%s[%s]($CODE_%d$)", prefix, text, idx)
+	}), codes
 }
 
 // Restore 将翻译后文本中的占位符还原为原始代码块内容。
