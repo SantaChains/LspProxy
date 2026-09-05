@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -236,6 +238,77 @@ func (d *DiskDict) ClearOlderThan(days int) (int, error) {
 		}
 	}
 	return count, nil
+}
+
+// Delete 从缓存中删除指定 key 的条目。
+// 条目存在返回 true，不存在返回 false。删除后立即触发写盘。
+// key 格式与 dictKey 相同：targetLang\0sourceText
+func (d *DiskDict) Delete(key string) bool {
+	d.mu.Lock()
+	elem, ok := d.items[key]
+	if !ok {
+		d.mu.Unlock()
+		return false
+	}
+	entry := elem.Value.(*diskEntry)
+	delete(d.items, entry.key)
+	d.order.Remove(elem)
+	d.generation++
+	d.mu.Unlock()
+
+	_ = d.flush()
+	return true
+}
+
+// CacheEntry 是 DiskDict 暴露给外部的只读条目结构。
+type CacheEntry struct {
+	Key         string    // 完整 key（dictKey 格式），可用于 Delete
+	Source      string    // 源文本（已 NormalizeKey 规范化）
+	Translation string    // 翻译结果
+	UpdatedAt   time.Time // 最后更新时间
+}
+
+// List 返回所有缓存条目的快照。
+// 条目按更新时间倒序（最近的在前）。返回的是拷贝，外部修改不影响内部状态。
+func (d *DiskDict) List() []CacheEntry {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	entries := make([]CacheEntry, 0, len(d.items))
+	for _, elem := range d.items {
+		entry := elem.Value.(*diskEntry)
+		// 从 key 反解出源文本：key = targetLang\x00NormalizeKey(source)
+		var source string
+		if idx := strings.Index(entry.key, "\x00"); idx >= 0 {
+			source = entry.key[idx+1:]
+		} else {
+			source = entry.key
+		}
+		entries = append(entries, CacheEntry{
+			Key:         entry.key,
+			Source:      source,
+			Translation: entry.value,
+			UpdatedAt:   entry.updatedAt,
+		})
+	}
+
+	// 按更新时间倒序
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].UpdatedAt.After(entries[j].UpdatedAt)
+	})
+	return entries
+}
+
+// Keys 返回缓存中所有条目的 key 快照。
+// 返回顺序不确定（来自 map）。返回的是拷贝，外部修改不影响内部状态。
+func (d *DiskDict) Keys() []string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	keys := make([]string, 0, len(d.items))
+	for k := range d.items {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // Close 停止后台写盘 goroutine 并做最后一次写盘。
