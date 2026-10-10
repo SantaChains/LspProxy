@@ -166,9 +166,25 @@ type Diagnostic struct {
 	// Tags 诊断标签：1=Unnecessary（灰显非活跃代码），2=Deprecated
 	Tags json.RawMessage `json:"tags,omitempty"`
 	// RelatedInformation 关联的补充信息（如变量声明位置等）
-	RelatedInformation json.RawMessage `json:"relatedInformation,omitempty"`
+	RelatedInformation []DiagnosticRelatedInformation `json:"relatedInformation,omitempty"`
 	// Data 供代码动作使用的扩展数据（LSP 3.16+）
 	Data json.RawMessage `json:"data,omitempty"`
+}
+
+// DiagnosticRelatedInformation 表示诊断关联的单条补充信息。
+type DiagnosticRelatedInformation struct {
+	// Location 关联的文件位置
+	Location Location `json:"location"`
+	// Message 关联描述文本（如 "binding declared here"，需要翻译）
+	Message string `json:"message"`
+}
+
+// Location 表示文件中的一个位置引用。
+type Location struct {
+	// Uri 关联文件的 URI
+	URI string `json:"uri"`
+	// Range 关联的源码范围
+	Range json.RawMessage `json:"range"`
 }
 
 // PublishDiagnosticsParams 对应 textDocument/publishDiagnostics 通知的参数。

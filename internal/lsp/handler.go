@@ -1254,21 +1254,13 @@ func (h *Handler) translateDocumentDiagnosticReport(ctx context.Context, result 
 	)
 
 	for i := range report.Items {
-		if report.Items[i].Message == "" {
+		if report.Items[i].Message == "" && len(report.Items[i].RelatedInformation) == 0 {
 			continue
 		}
 		if ctx.Err() != nil {
 			return result, ctx.Err()
 		}
-		translated, err := h.translateDiagMessage(ctx, report.Items[i].Message)
-		if err != nil {
-			h.logger.Warn("翻译拉取式诊断消息失败",
-				slog.String("message", truncate(report.Items[i].Message, 80)),
-				slog.String("error", err.Error()),
-			)
-			continue
-		}
-		report.Items[i].Message = translated
+		h.translateDiagnosticItem(ctx, &report.Items[i])
 	}
 
 	out, err := json.Marshal(report)
@@ -1289,7 +1281,7 @@ func (h *Handler) translateDiagnostics(ctx context.Context, params json.RawMessa
 	}
 
 	for i := range p.Diagnostics {
-		if p.Diagnostics[i].Message == "" {
+		if p.Diagnostics[i].Message == "" && len(p.Diagnostics[i].RelatedInformation) == 0 {
 			continue
 		}
 
@@ -1298,15 +1290,7 @@ func (h *Handler) translateDiagnostics(ctx context.Context, params json.RawMessa
 			return params, ctx.Err()
 		}
 
-		translated, err := h.translateDiagMessage(ctx, p.Diagnostics[i].Message)
-		if err != nil {
-			h.logger.Warn("翻译诊断消息失败",
-				slog.String("message", truncate(p.Diagnostics[i].Message, 80)),
-				slog.String("error", err.Error()),
-			)
-			continue
-		}
-		p.Diagnostics[i].Message = translated
+		h.translateDiagnosticItem(ctx, &p.Diagnostics[i])
 	}
 
 	out, err := json.Marshal(p)
@@ -1314,6 +1298,40 @@ func (h *Handler) translateDiagnostics(ctx context.Context, params json.RawMessa
 		return params, fmt.Errorf("序列化翻译后的 PublishDiagnosticsParams 失败: %w", err)
 	}
 	return out, nil
+}
+
+// translateDiagnosticItem 翻译单条诊断的主消息与关联信息。
+//
+// 关联信息（relatedInformation）由编辑器渲染为 "文件(行, 列): 消息" 格式，
+// 其 message 字段同样需要翻译；主消息翻译失败仅记录日志，保留原文。
+func (h *Handler) translateDiagnosticItem(ctx context.Context, d *Diagnostic) {
+	if d.Message != "" {
+		translated, err := h.translateDiagMessage(ctx, d.Message)
+		if err != nil {
+			h.logger.Warn("翻译诊断消息失败",
+				slog.String("message", truncate(d.Message, 80)),
+				slog.String("error", err.Error()),
+			)
+		} else {
+			d.Message = translated
+		}
+	}
+
+	for i := range d.RelatedInformation {
+		info := &d.RelatedInformation[i]
+		if info.Message == "" {
+			continue
+		}
+		translated, err := h.translateDiagMessage(ctx, info.Message)
+		if err != nil {
+			h.logger.Warn("翻译诊断关联信息失败",
+				slog.String("message", truncate(info.Message, 80)),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		info.Message = translated
+	}
 }
 
 // translateDiagMessage 使用模板化策略翻译单条诊断消息。
