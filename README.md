@@ -29,10 +29,12 @@
 |-----------------------------------|-----------------|-------------------------|
 | `textDocument/hover`              | `contents`      | 悬停文档                |
 | `textDocument/completion`         | `documentation` | 补全项说明              |
-| `textDocument/signatureHelp`      | `documentation` | 签名提示                |
-| `textDocument/publishDiagnostics` | `message`       | 诊断消息                |
+| `textDocument/signatureHelp`      | `documentation` | 签名提示（含参数文档）  |
+| `textDocument/publishDiagnostics` | `message`       | 诊断消息与关联信息      |
 | `completionItem/resolve`          | `documentation` | 补全项解析              |
 | `textDocument/diagnostic`         | `message`       | 拉取式诊断（LSP 3.17+） |
+
+诊断的 `relatedInformation[].message` 一并翻译，文件、行列、URL 等定位字段原样保留。
 
 ***
 
@@ -42,7 +44,7 @@
 
 - **两阶段超时**：缓存命中走 50 ms 快速路径；未命中在可配置超时内等待翻译，超时后返回原文并后台预热缓存
 
-- **占位符保护**：代码块、URL、行内 HTML 与词汇本术语替换为 `$CODE_N$` 占位符后整体翻译，还原后代码不被误译
+- **七层占位符保护**：代码块 → 技术术语 → 链接/图片 URL（含 title 保留）→ 自动链接 → 行内 HTML → 引用定义 → 裸 URL，依序替换为 `$CODE_N$` 占位符后整体翻译，还原后代码与链接不被误译
 
 - **术语子串保护**：词汇本词条在段落内按词边界匹配，术语位置直接输出词汇本译文；词汇本热重载即时生效，无需清理任何缓存
 
@@ -369,11 +371,11 @@ bun run build
 
 - **提示词精简**：明确保留范围（标识符、关键字、API 名、错误类型名），翻译描述性文字，减少 token 消耗
 
+- **TUI 实时翻译日志**：新增日志标签页，便于调试
+
 ### P2
 
 - **Bing 翻译接入**：研究 Bing 免费端点的稳定调用方式
-
-- **TUI 实时翻译日志**：新增日志标签页，便于调试
 
 ### P3
 
