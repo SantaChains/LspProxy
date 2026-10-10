@@ -230,19 +230,10 @@ func findInlineClose(runes []rune, start, tickCount int) int {
 	return -1
 }
 
-// Join 将片段重新拼接为完整字符串
-func Join(segments []Segment) string {
-	var sb strings.Builder
-	for _, seg := range segments {
-		sb.WriteString(seg.Content)
-	}
-	return sb.String()
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 占位符替换法（Placeholder Substitution）
 //
-// 与 Split/Join 的"分段翻译"不同，占位符法将代码块替换为短标记后，
+// 与 Split 的"分段翻译"不同，占位符法将代码块替换为短标记后，
 // 把整段文本作为一个整体发送给翻译引擎，翻译完成后再还原代码块。
 //
 // 优点：

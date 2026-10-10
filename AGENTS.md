@@ -103,7 +103,6 @@ func WriteMessage(w io.Writer, data []byte) error    // 写 Content-Length 帧
 
 ```go
 func Split(text string) []Segment          // 分割为 KindText / KindCode
-func Join(segments []Segment) string
 func Protect(text string) (masked string, codes []string)               // 七层占位符保护
 func ProtectWithTerms(text string, terms map[string]string) (string, []string)  // 追加第八层词汇本术语保护
 func Restore(masked string, codes []string) string

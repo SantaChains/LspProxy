@@ -80,7 +80,7 @@ func TestSplit_TildeBlock(t *testing.T) {
 	}
 }
 
-func TestSplit_Join_Roundtrip(t *testing.T) {
+func TestSplit_Roundtrip(t *testing.T) {
 	cases := []string{
 		"plain text",
 		"Use `init` here",
@@ -90,9 +90,12 @@ func TestSplit_Join_Roundtrip(t *testing.T) {
 		"   ",
 	}
 	for _, input := range cases {
-		got := Join(Split(input))
-		if got != input {
-			t.Errorf("Join(Split(%q)) = %q，期望与原文相同", input, got)
+		var sb strings.Builder
+		for _, seg := range Split(input) {
+			sb.WriteString(seg.Content)
+		}
+		if got := sb.String(); got != input {
+			t.Errorf("Split(%q) 拼接 = %q，期望与原文相同", input, got)
 		}
 	}
 }
