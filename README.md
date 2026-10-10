@@ -42,7 +42,9 @@
 
 - **两阶段超时**：缓存命中走 50 ms 快速路径；未命中在可配置超时内等待翻译，超时后返回原文并后台预热缓存
 
-- **占位符保护**：代码块与技术术语替换为 `$CODE_N$` 占位符后整体翻译，还原后代码不被误译
+- **占位符保护**：代码块、URL、行内 HTML 与词汇本术语替换为 `$CODE_N$` 占位符后整体翻译，还原后代码不被误译
+
+- **术语子串保护**：词汇本词条在段落内按词边界匹配，术语位置直接输出词汇本译文；词汇本热重载即时生效，无需清理任何缓存
 
 - **诊断零延迟**：`publishDiagnostics` 立即以英文显示，翻译完成后异步推送中文版本
 
@@ -172,6 +174,8 @@ copy "$(go env GOPATH)\bin\LspProxy.exe" "D:\tools\lsp-proxy\rust-analyzer.exe"
 
 LspProxy 启动时检测到自身名为 `rust-analyzer`，自动在 PATH 中查找真实 rust-analyzer 并代理（跳过自身副本所在目录，不会递归）。真实 rust-analyzer 须在 PATH 中且不与副本同目录，或在副本同目录放置 `rust-analyzer.real.exe`。
 
+> 扩展启动时常先执行 `<server.path> --version` 探测可用性。LspProxy 对 `--version`、`-V`、`--help`、`-h` 及 `version`、`help` 子命令走直通模式：直接运行真实 LSP 并透传退出码，不进入代理生命周期，避免探测互锁挂起（gopls 扩展用 `version -json` 子命令探测，同样覆盖）。
+
 > 其他 LSP（clangd、gopls、pyright 等）同理：复制为对应 LSP 名，配置对应扩展的 `server.path`。
 >
 > clangd 示例（VSCode `clangd` 扩展）：
@@ -247,6 +251,40 @@ translate:
 
 ***
 
+## 词汇本
+
+词汇本位于 `~/.local/share/lsp-proxy/glossary/`，全局 `_global.toml` 加 LSP 专属文件（如 `rust-analyzer.toml`）两级，专属词条覆盖全局同名词条，文件修改即时热重载。
+
+```toml
+[terms]
+"borrow checker" = "借用检查器"
+"lifetime"       = "生命周期"
+```
+
+词条以两种方式生效：
+
+- **整段精确匹配**：翻译文本与词条原文完全一致时零延迟返回译文，位于引擎链最前端
+
+- **子串保护**：词条在段落内按 ASCII 词边界、大小写无关匹配（长术语优先，少于 2 字符忽略），命中位置翻译后直接输出词汇本译文，保证术语全局一致
+
+内置高频术语词库（Rust、TypeScript 等）随程序内嵌并自动合并到各词汇本，开箱即用。
+
+维护命令：
+
+```bash
+# 导出全部词汇本为 Markdown wiki（含目录与统计）
+LspProxy glossary export --out glossary.md
+
+# 将磁盘词典条目晋升为词汇本词条（自动跳过含占位符的条目）
+LspProxy cache promote --lsp rust-analyzer --limit 50
+LspProxy cache promote --global
+
+# 导出磁盘词典为 Markdown 表格
+LspProxy cache export --out dict.md --filter "borrow" --limit 200
+```
+
+***
+
 ## TUI 管理界面
 
 `LspProxy --tui` 启动可视化管理界面，提供状态、配置、日志、提示词、词典、词汇本六个标签页。
@@ -265,12 +303,12 @@ translate:
 
 ```
 LspProxy/
-├── cmd/                    # CLI 命令（root、run、version）
+├── cmd/                    # CLI 命令（root、run、cache、glossary）
 ├── internal/
 │   ├── config/             # 配置加载 / 保存（YAML + viper）
 │   ├── glossary/           # 术语词汇本（内置词库 + 热重载）
 │   ├── lsp/                # JSON-RPC 帧读写、消息类型、翻译调度
-│   ├── markdown/           # 代码块占位符保护
+│   ├── markdown/           # 占位符保护与术语子串替换
 │   ├── proxy/              # 子进程管理、双向消息转发
 │   └── translate/          # 翻译引擎与缓存（内存 LRU / 磁盘词典 / 在线 API）
 ├── tui/                    # Bubble Tea 管理界面

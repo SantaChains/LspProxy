@@ -37,6 +37,9 @@ type Proxy struct {
 	cfg    *config.Config
 	engine translate.Engine
 	logger *slog.Logger
+	// termFn 返回词汇本术语映射（原文 → 译文），nil 表示未启用词汇本术语保护。
+	// 透传给 Handler，用于翻译时的术语占位保护。
+	termFn func() map[string]string
 }
 
 // New 创建一个新的 Proxy 实例。
@@ -44,11 +47,13 @@ type Proxy struct {
 //   - cfg:    代理配置（目标语言、缓存大小等）
 //   - engine: 翻译引擎（已包装 LRU 缓存）
 //   - logger: 结构化日志（必须写到文件，不能写到 stdout/stderr，否则污染 LSP 协议）
-func New(cfg *config.Config, engine translate.Engine, logger *slog.Logger) *Proxy {
+//   - termFn: 词汇本术语映射获取函数（可为 nil）
+func New(cfg *config.Config, engine translate.Engine, logger *slog.Logger, termFn func() map[string]string) *Proxy {
 	return &Proxy{
 		cfg:    cfg,
 		engine: engine,
 		logger: logger,
+		termFn: termFn,
 	}
 }
 
@@ -99,7 +104,7 @@ func (p *Proxy) Run(ctx context.Context, command string, args []string) error {
 	p.logger.Info("LSP 子进程已启动", slog.Int("pid", cmd.Process.Pid))
 
 	// 创建消息处理器（负责翻译）
-	handler := lsp.NewHandler(p.engine, p.cfg.Proxy.TargetLang, p.logger, p.cfg.Proxy.TranslationTimeout, p.cfg.Proxy.DisplayMode)
+	handler := lsp.NewHandler(p.engine, p.cfg.Proxy.TargetLang, p.logger, p.cfg.Proxy.TranslationTimeout, p.cfg.Proxy.DisplayMode, p.termFn)
 
 	// 使用 WaitGroup 等待两个转发 goroutine 都退出
 	var wg sync.WaitGroup

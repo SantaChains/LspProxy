@@ -11,12 +11,15 @@ import (
 // New 根据配置创建对应的翻译引擎，并包装三级缓存（内存 LRU + 磁盘词典）、
 // 并发合并和术语词汇本。
 //
-// lspName 为当前代理的 LSP 可执行文件名（如 "rust-analyzer"），用于加载 LSP 专属词汇本。
-// 传空字符串时仅使用全局词汇本。
+// lspName 为当前代理的 LSP 名称（如 "rust-analyzer"，小写、不含扩展名），
+// 用于加载 LSP 专属词汇本。传空字符串时仅使用全局词汇本。
+//
+// 返回值中的 *glossary.Glossary 供 Handler 做术语子串保护（与引擎链的
+// 整段精确匹配互补），不需要时可忽略。
 //
 // 引擎链路（从外到内）：
 //
-//	GlossaryEngine → SingleflightEngine → DictEngine（内存LRU + 磁盘词典 + FallbackEngine）
+//	PhraseEngine → GlossaryEngine → SingleflightEngine → DictEngine（内存LRU + 磁盘词典 + FallbackEngine）
 //
 // FallbackEngine 内部按优先级排列多个在线引擎，前一个失败自动尝试下一个，
 // 避免因单个引擎不可达导致翻译全部失败。
@@ -28,10 +31,10 @@ import (
 //  4. 内存 LRU 缓存
 //  5. 磁盘 JSON 词典
 //  6. FallbackEngine：在线翻译 API（主引擎 → 备用引擎）
-func New(cfg *config.Config, lspName string, logger *slog.Logger) (Engine, error) {
+func New(cfg *config.Config, lspName string, logger *slog.Logger) (Engine, *glossary.Glossary, error) {
 	engines, concurrent, err := buildEngines(cfg, logger)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var base Engine
@@ -87,7 +90,7 @@ func New(cfg *config.Config, lspName string, logger *slog.Logger) (Engine, error
 	// ── 内置高频短语词典层（最外层，零延迟）──
 	// LSP 文档中大量固定短语（Returns、Parameters 等）直接查表返回，
 	// 不经过词汇本/缓存/API。
-	return NewPhraseEngine(glossaryEngine), nil
+	return NewPhraseEngine(glossaryEngine), g, nil
 }
 
 // buildEngines 根据配置构建在线引擎列表。

@@ -64,13 +64,13 @@ type Engine interface {
 
 实现：GoogleEngine（google.go）、MyMemoryEngine（mymemory.go，免费国内可达）、OpenAIEngine（openai.go）。
 装饰器：PhraseEngine（内置高频短语词典，最外层零延迟查表）、CachedEngine（内存 LRU）、DictEngine（磁盘 JSON 词典）、SingleflightEngine（并发合并）、FallbackEngine（免费引擎并发竞速 + AI 引擎串行兜底，含熔断）、GlossaryEngine（术语词汇本）。
-工厂：translate.New(cfg, lspName, logger) 返回组装好的完整引擎链路。
+工厂：translate.New(cfg, lspName, logger) 返回组装好的完整引擎链路，同时返回 *glossary.Glossary 供 Handler 做术语子串保护。
 
 ### lsp.Handler（消息处理核心）
 
 ```go
 func NewHandler(engine translate.Engine, targetLang string, logger *slog.Logger,
-    translationTimeoutMs int, displayMode config.DisplayMode) *Handler
+    translationTimeoutMs int, displayMode config.DisplayMode, termFn func() map[string]string) *Handler
 ```
 
 关键方法：
@@ -103,17 +103,21 @@ func WriteMessage(w io.Writer, data []byte) error    // 写 Content-Length 帧
 ```go
 func Split(text string) []Segment          // 分割为 KindText / KindCode
 func Join(segments []Segment) string
-func Protect(text string) (masked string, codes []string)  // 代码占位符保护
+func Protect(text string) (masked string, codes []string)               // 六层代码/URL/HTML 占位符保护
+func ProtectWithTerms(text string, terms map[string]string) (string, []string)  // 追加第七层词汇本术语保护
 func Restore(masked string, codes []string) string
 ```
 
 Segment{Kind SegmentKind, Content string}，KindText=0, KindCode=1。占位符格式 `$CODE_n$`。
 
+ProtectWithTerms 的术语占位符还原内容直接写入词汇本译文（codes 存译文而非原文），Restore 时术语位置输出的就是译文；术语按长度降序做 ASCII 词边界大小写无关匹配，少于 2 字符的词条忽略。
+
 ### proxy.Proxy
 
 ```go
-func New(cfg *config.Config, engine translate.Engine, logger *slog.Logger) *Proxy
+func New(cfg *config.Config, engine translate.Engine, logger *slog.Logger, termFn func() map[string]string) *Proxy
 func (p *Proxy) Run(ctx context.Context, command string, args []string) error
+func RunPassthrough(command string, args []string) error   // --version/--help/version 探测直通
 ```
 
 内部 goroutine：forwardClientToLsp、forwardLspToClient。LSP 崩溃时 notifyLspCrash 向编辑器发 window/showMessage + 解除挂起请求。
@@ -122,7 +126,8 @@ func (p *Proxy) Run(ctx context.Context, command string, args []string) error
 
 ```go
 func New(dir string, lspNames []string, logger *slog.Logger) *Glossary
-func (g *Glossary) Lookup(text, lspName string) (string, bool)
+func (g *Glossary) Lookup(text, lspName string) (string, bool)   // 整段精确匹配（引擎链最前端）
+func (g *Glossary) Terms(lspName string) map[string]string       // 合并映射，供术语子串保护
 ```
 
 支持文件热重载（fsnotify watcher）。文件名 = LSP 可执行名（rust-analyzer.toml），\_global.toml 为全局。

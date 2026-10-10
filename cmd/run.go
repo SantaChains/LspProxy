@@ -94,13 +94,20 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	lspCommand := args[0]
 	lspArgs := args[1:]
 
+	// 词汇本文件名使用规范化名称：小写、去目录与扩展名。
+	// 编辑器扩展的 server.path 可能传绝对路径（如 D:\bin\rust-analyzer.exe）。
+	lspName := strings.ToLower(strings.TrimSuffix(filepath.Base(lspCommand), filepath.Ext(lspCommand)))
+
 	// ── 5.5 探测直通：--version/--help 不走代理生命周期 ──────────────────
 	// 编辑器以 "<server> --version" 探测可用性时，stdin 管道保持打开并等待
 	// 进程退出；代理模式会在子进程退出后继续等待客户端 stdin 关闭而挂起，
 	// 导致探测永不返回、服务器永不启动。此处直接透传真实 LSP。
+	// version/help 为子命令形式（如 gopls 预检执行 "gopls version -json"）。
+	// 小写 -v 有意不在列：部分 LSP（如 pylsp -v 冗长日志）将其作为会话参数，
+	// 须走代理模式保留翻译；无扩展以 -v 探测（真实 rust-analyzer -v 会启动服务器）。
 	if len(lspArgs) > 0 {
 		switch lspArgs[0] {
-		case "--version", "-V", "--help", "-h":
+		case "--version", "-V", "-version", "--help", "-h", "version", "help":
 			if err := proxy.RunPassthrough(lspCommand, lspArgs); err != nil {
 				// 透传真实 LSP 的退出码，探测失败时编辑器据此判定二进制不可用
 				var ec exitCoder
@@ -126,7 +133,7 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	}
 
 	// ── 7. 创建翻译引擎 ───────────────────────────────────────────────────
-	engine, err := translate.New(cfg, lspCommand, logger)
+	engine, gl, err := translate.New(cfg, lspName, logger)
 	if err != nil {
 		return fmt.Errorf("初始化翻译引擎失败: %w", err)
 	}
@@ -139,10 +146,13 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	logger.Info("翻译引擎已初始化",
 		slog.String("engine", engine.Name()),
 		slog.String("targetLang", cfg.Proxy.TargetLang),
+		slog.String("lspName", lspName),
 	)
 
 	// ── 8. 创建代理实例 ───────────────────────────────────────────────────
-	p := proxy.New(cfg, engine, logger)
+	// termFn 每次翻译时即时取词，词汇本热重载后无需任何失效处理
+	termFn := func() map[string]string { return gl.Terms(lspName) }
+	p := proxy.New(cfg, engine, logger, termFn)
 
 	// ── 9. 监听系统信号，实现优雅退出 ────────────────────────────────────
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

@@ -188,6 +188,27 @@ func (g *Glossary) LSPNames() []string {
 	return names
 }
 
+// Terms 返回合并后的术语映射（key 原文，value 译文）。
+// 合并规则：全局词汇本打底，LSP 专属词汇本覆盖同 key 条目，与 Lookup 优先级一致。
+// 返回副本，调用方可安全持有或修改。
+// 该方法供 markdown 层的子串术语保护使用，与 Lookup 的整段精确匹配互补。
+func (g *Glossary) Terms(lspName string) map[string]string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	lspMap := g.lspMaps[lspName]
+	m := make(map[string]string, len(g.global)+len(lspMap))
+	for k, v := range g.global {
+		m[k] = v
+	}
+	if lspName != "" {
+		for k, v := range lspMap {
+			m[k] = v
+		}
+	}
+	return m
+}
+
 // EnsureLSP 确保指定 LSP 的专属词汇本已加载。
 // 若尚未加载则尝试从磁盘读取（文件不存在时写入空示例文件）。
 // 此方法在代理启动后首次收到 LSP 命令时调用，是懒加载入口。
@@ -411,6 +432,12 @@ func tomlQuoteEntry(s string) string {
 func SaveTermsToFile(filePath string, terms []TermEntry) error {
 	g := &Glossary{} // 空实例，仅用于调用 SaveTerms
 	return g.SaveTerms(filePath, terms)
+}
+
+// LoadTermsFromFile 是独立于 Glossary 实例的文件读取函数，供 CLI/TUI 使用。
+func LoadTermsFromFile(filePath string) ([]TermEntry, error) {
+	g := &Glossary{} // 空实例，仅用于调用 LoadTerms
+	return g.LoadTerms(filePath)
 }
 
 // ─────────────────────────────────────────────

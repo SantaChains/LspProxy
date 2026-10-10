@@ -121,6 +121,9 @@ type Handler struct {
 	displayMode config.DisplayMode
 	// logger 结构化日志记录器
 	logger *slog.Logger
+	// termFn 返回词汇本术语映射（原文 → 译文），nil 或返回空表时禁用术语保护。
+	// 映射随词汇本热重载动态变化，每次翻译时即时获取，无需缓存失效逻辑。
+	termFn func() map[string]string
 	// pending 记录已发出但尚未收到响应的请求，key 为 ID 字符串
 	pending map[string]pendingInfo
 	// mu 保护 pending 并发访问
@@ -149,7 +152,8 @@ type Handler struct {
 // NewHandler 创建并返回一个新的 Handler 实例。
 // translationTimeoutMs 为翻译等待超时毫秒数，0 表示无限等待。
 // displayMode 控制译文展示方式，空值时默认为 translation_only。
-func NewHandler(engine translate.Engine, targetLang string, logger *slog.Logger, translationTimeoutMs int, displayMode config.DisplayMode) *Handler {
+// termFn 提供词汇本术语映射（可为 nil，表示未启用词汇本术语保护）。
+func NewHandler(engine translate.Engine, targetLang string, logger *slog.Logger, translationTimeoutMs int, displayMode config.DisplayMode, termFn func() map[string]string) *Handler {
 	var timeout time.Duration
 	if translationTimeoutMs > 0 {
 		timeout = time.Duration(translationTimeoutMs) * time.Millisecond
@@ -163,12 +167,34 @@ func NewHandler(engine translate.Engine, targetLang string, logger *slog.Logger,
 		targetLang:         targetLang,
 		displayMode:        displayMode,
 		logger:             logger,
+		termFn:             termFn,
 		pending:            make(map[string]pendingInfo),
 		translationTimeout: timeout,
 		refreshID:          0,
 		refreshIDs:         make(map[string]struct{}),
 		bgSema:             make(chan struct{}, bgConcurrencyLimit),
 	}
+}
+
+// termsMap 获取当前词汇本术语映射；未配置词汇本时返回 nil。
+func (h *Handler) termsMap() map[string]string {
+	if h.termFn == nil {
+		return nil
+	}
+	return h.termFn()
+}
+
+// protectWithTerms 对 text 执行占位符保护（代码块、链接 URL 等六层），
+// terms 非空时追加第七层词汇本术语保护：术语命中处替换为占位符，且还原
+// 内容直接写入词汇本译文，Restore 时术语位置输出的就是译文。
+// 返回掩码文本、还原码表，以及本次是否启用了术语保护。
+func protectWithTerms(text string, terms map[string]string) (string, []string, bool) {
+	if len(terms) == 0 {
+		masked, codes := markdown.Protect(text)
+		return masked, codes, false
+	}
+	masked, codes := markdown.ProtectWithTerms(text, terms)
+	return masked, codes, true
 }
 
 // tryStartBg 非阻塞地尝试获取后台翻译信号量。
@@ -1857,16 +1883,24 @@ func (h *Handler) translateText(ctx context.Context, text string) (string, error
 		return "", ctx.Err()
 	}
 
-	// ── 第一步：用占位符保护代码块 ──
-	masked, codes := markdown.Protect(text)
+	// ── 第一步：占位符保护（代码块、链接等六层 + 词汇本术语第七层）──
+	terms := h.termsMap()
+	masked, codes, hasTerms := protectWithTerms(text, terms)
 
 	h.logger.Debug("占位符保护完成",
 		slog.Int("code_blocks", len(codes)),
+		slog.Bool("glossary_terms", hasTerms),
 		slog.String("masked_preview", truncate(masked, 80)),
 	)
 
 	// 若掩码后文本无可翻译词语，说明原文只有代码块或纯符号，直接返回原文
 	if !hasTranslatableWords(masked) {
+		// 术语保护启用时，纯术语段落（如整段恰好只有一个词条）也应输出词汇本译文
+		if hasTerms {
+			if restored := markdown.Restore(masked, codes); restored != text {
+				return restored, nil
+			}
+		}
 		return text, nil
 	}
 
@@ -1939,6 +1973,9 @@ func (h *Handler) translateTextForBilingual(ctx context.Context, text string) (o
 	origParas = paras
 	transParas = make([]string, len(paras))
 
+	// 术语映射整篇取一次，避免逐段重建
+	terms := h.termsMap()
+
 	for i, para := range paras {
 		// 检查 context 是否已取消
 		if ctx.Err() != nil {
@@ -1957,8 +1994,8 @@ func (h *Handler) translateTextForBilingual(ctx context.Context, text string) (o
 			continue
 		}
 
-		// 用占位符保护代码块和技术术语
-		masked, codes := markdown.Protect(para)
+		// 用占位符保护代码块和词汇本术语
+		masked, codes, hasTerms := protectWithTerms(para, terms)
 		maskedTrimmed := strings.TrimSpace(masked)
 
 		// 全为代码块：不翻译
@@ -1970,6 +2007,13 @@ func (h *Handler) translateTextForBilingual(ctx context.Context, text string) (o
 		// 无词语性内容（仅标点/符号/等号等）：不翻译
 		// 典型场景："`T` = `Instant`，`U` = `u64`" 这类行
 		if !hasTranslatableWords(maskedTrimmed) {
+			// 术语保护时，纯术语段落直接还原出词汇本译文
+			if hasTerms {
+				if restored := markdown.Restore(masked, codes); restored != para {
+					transParas[i] = restored
+					continue
+				}
+			}
 			transParas[i] = para
 			continue
 		}

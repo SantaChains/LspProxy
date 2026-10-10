@@ -3,8 +3,10 @@ package markdown
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // SegmentKind 表示文本片段的类型
@@ -453,4 +455,98 @@ func Restore(masked string, codes []string) string {
 		}
 		return codes[idx]
 	})
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 第七层：词汇本术语保护
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ProtectWithTerms 在 [Protect] 的六层保护之后追加第七层：词汇本术语保护。
+//
+// terms 为词汇本术语映射（原文 → 译文）。命中术语的文本被替换为占位符，
+// 且占位符的还原内容直接写入词汇本译文——[Restore] 时术语位置输出的就是译文。
+// 这一设计使术语翻译：
+//   - 不依赖翻译引擎对术语的处理质量（免费引擎经常译坏专业术语）
+//   - 不污染引擎输入（引擎看到的是占位符，与代码块同等对待）
+//   - 支持热重载（缓存存储的是含占位符的译文，Restore 时才代入当前词条，
+//     修改词汇本后旧缓存立即按新译文还原）
+//
+// 匹配规则：
+//   - 大小写不敏感（"Rust" 与 "rust" 命中同一条目）
+//   - ASCII 词边界保护，避免 "lifetime" 误命中 "lifetimes" 的前缀
+//   - 长术语优先，避免 "lifetime elision" 被 "lifetime" 抢先截断
+//   - 少于 2 个字符的术语忽略（防止单字符词条毁掉全文）
+//   - 代码块、链接 URL、行内 HTML 内部的文本不参与匹配（已被前六层保护）
+func ProtectWithTerms(text string, terms map[string]string) (masked string, codes []string) {
+	masked, codes = Protect(text)
+	if len(terms) == 0 {
+		return masked, codes
+	}
+
+	re, lookup := termMatcher(terms)
+	if re == nil {
+		return masked, codes
+	}
+
+	masked = re.ReplaceAllStringFunc(masked, func(match string) string {
+		replacement, ok := lookup[strings.ToLower(match)]
+		if !ok {
+			return match
+		}
+		idx := len(codes)
+		codes = append(codes, replacement)
+		return fmt.Sprintf(placeholderFmt, idx)
+	})
+	return masked, codes
+}
+
+// termMatcher 由术语表构建大小写无关的匹配正则与查询表。
+// 返回 nil 表示无有效术语，调用方应跳过术语保护层。
+func termMatcher(terms map[string]string) (*regexp.Regexp, map[string]string) {
+	// 收集有效 key，按长度降序排序（同长按字典序保证确定性）
+	keys := make([]string, 0, len(terms))
+	for k := range terms {
+		t := strings.TrimSpace(k)
+		if t != "" && utf8.RuneCountInString(t) >= 2 {
+			keys = append(keys, t)
+		}
+	}
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if len(keys[i]) != len(keys[j]) {
+			return len(keys[i]) > len(keys[j])
+		}
+		return keys[i] < keys[j]
+	})
+
+	// 查询表：小写 key → 译文。遍历已排序的 keys，重复 key（如 "Rust"/"rust"）
+	// 的胜负确定：较长者胜出，同长时排序靠后者胜出。
+	lookup := make(map[string]string, len(keys))
+	for _, k := range keys {
+		lookup[strings.ToLower(k)] = terms[k]
+	}
+
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		q := regexp.QuoteMeta(k)
+		if isASCIIWord(k[0]) {
+			q = `\b` + q
+		}
+		if isASCIIWord(k[len(k)-1]) {
+			q += `\b`
+		}
+		parts[i] = q
+	}
+	return regexp.MustCompile(`(?i)(` + strings.Join(parts, `|`) + `)`), lookup
+}
+
+// isASCIIWord 判断字节是否属于 ASCII 单词字符（[A-Za-z0-9_]）。
+// Go 正则的 \b 是 ASCII 词边界，多字节 UTF-8 键的首尾字节不加边界。
+func isASCIIWord(b byte) bool {
+	return b == '_' ||
+		(b >= 'a' && b <= 'z') ||
+		(b >= 'A' && b <= 'Z') ||
+		(b >= '0' && b <= '9')
 }
