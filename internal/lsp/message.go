@@ -137,6 +137,16 @@ type SignatureInformation struct {
 	Label string `json:"label"`
 	// Documentation 签名的详细文档，可以是 string 或 MarkupContent
 	Documentation json.RawMessage `json:"documentation,omitempty"`
+	// Parameters 签名的参数列表（LSP 3.14+，label 可为 string 或 UTF-16 偏移对）
+	Parameters []ParameterInformation `json:"parameters,omitempty"`
+}
+
+// ParameterInformation 表示签名中单个参数的信息。
+type ParameterInformation struct {
+	// Label 参数标签：字符串或 [start, end] UTF-16 偏移对（不翻译，可能被编辑器用于定位）
+	Label json.RawMessage `json:"label"`
+	// Documentation 参数的详细文档，可以是 string 或 MarkupContent
+	Documentation json.RawMessage `json:"documentation,omitempty"`
 }
 
 // SignatureHelp 对应 textDocument/signatureHelp 请求的响应结果。

@@ -38,16 +38,16 @@ go fmt ./...
 
 ## 目录与职责
 
-| 路径                  | 职责                                | 依赖限制                 |
-| ------------------- | --------------------------------- | -------------------- |
-| cmd/                | CLI 解析、参数验证、组件装配                  | 可依赖所有内部包             |
-| internal/config/    | 配置加载保存（viper）                     | 不依赖其他内部包             |
-| internal/glossary/  | 术语词汇本（全局 + LSP 专属，含 builtin 内嵌词库） | 依赖 config            |
-| internal/lsp/       | JSON-RPC 协议实现                     | 不知道翻译                |
-| internal/translate/ | 翻译引擎与缓存                           | 不知道 LSP 协议           |
-| internal/markdown/  | 文本分割                              | 零外部依赖                |
-| internal/proxy/     | 流程编排，组合所有组件                       | 可依赖所有内部包             |
-| tui/                | 界面展示                              | 调用 config、glossary 包 |
+| 路径                | 职责                                               | 依赖限制                 |
+|---------------------|----------------------------------------------------|--------------------------|
+| cmd/                | CLI 解析、参数验证、组件装配                       | 可依赖所有内部包         |
+| internal/config/    | 配置加载保存（viper）                              | 不依赖其他内部包         |
+| internal/glossary/  | 术语词汇本（全局 + LSP 专属，含 builtin 内嵌词库） | 依赖 config              |
+| internal/lsp/       | JSON-RPC 协议实现                                  | 不知道翻译               |
+| internal/translate/ | 翻译引擎与缓存                                     | 不知道 LSP 协议          |
+| internal/markdown/  | 文本分割                                           | 零外部依赖               |
+| internal/proxy/     | 流程编排，组合所有组件                             | 可依赖所有内部包         |
+| tui/                | 界面展示                                           | 调用 config、glossary 包 |
 
 ***
 
@@ -81,6 +81,7 @@ func NewHandler(engine translate.Engine, targetLang string, logger *slog.Logger,
 
 - TrackRequest / popInfo → 追踪请求方法，用于响应分发
   翻译方法：translateHover、translateCompletion、translateSignatureHelp、translateDiagnostics、translateResolvedItem。
+  诊断翻译覆盖主 message 与 relatedInformation[].message（DiagnosticRelatedInformation 结构化类型）；签名翻译覆盖签名与参数的 documentation，Label 一律不翻（可能为 UTF-16 偏移对）；CompletionItem.detail 有意不翻译（补全列表逐行显示延迟敏感，且多为类型签名）。
 
 ### lsp.BaseMessage（JSON-RPC 消息）
 
@@ -103,12 +104,14 @@ func WriteMessage(w io.Writer, data []byte) error    // 写 Content-Length 帧
 ```go
 func Split(text string) []Segment          // 分割为 KindText / KindCode
 func Join(segments []Segment) string
-func Protect(text string) (masked string, codes []string)               // 六层代码/URL/HTML 占位符保护
-func ProtectWithTerms(text string, terms map[string]string) (string, []string)  // 追加第七层词汇本术语保护
+func Protect(text string) (masked string, codes []string)               // 七层占位符保护
+func ProtectWithTerms(text string, terms map[string]string) (string, []string)  // 追加第八层词汇本术语保护
 func Restore(masked string, codes []string) string
 ```
 
 Segment{Kind SegmentKind, Content string}，KindText=0, KindCode=1。占位符格式 `$CODE_n$`。
+
+Protect 七层顺序：代码块 → panic/throws/raises → 标准链接 URL（title 原样保留）→ autolink → 行内 HTML → ref-def URL → 裸 URL（最后执行，前层已占位符化后命中的才是真裸 URL）。裸 URL 正则末字符限定非标点防吞句尾逗号句号。
 
 ProtectWithTerms 的术语占位符还原内容直接写入词汇本译文（codes 存译文而非原文），Restore 时术语位置输出的就是译文；术语按长度降序做 ASCII 词边界大小写无关匹配，少于 2 字符的词条忽略。
 
@@ -162,15 +165,15 @@ Markdown 分割：Split() 后只翻译 KindText，KindCode 用 Protect/Restore �
 
 ## 配置默认值
 
-| 项                          | 默认值                                 | 说明                                                 |
-| -------------------------- | ----------------------------------- | -------------------------------------------------- |
+| 项                         | 默认值                              | 说明                                               |
+|----------------------------|-------------------------------------|----------------------------------------------------|
 | translate.engine           | google                              | google / openai                                    |
-| proxy.target\_lang         | zh-CN                               | 目标语言                                               |
+| proxy.target\_lang         | zh-CN                               | 目标语言                                           |
 | proxy.display\_mode        | translation\_only                   | translation\_only / bilingual / bilingual\_compare |
-| proxy.cache\_size          | 30                                  | 内存 LRU 上限 MB                                       |
-| proxy.dict\_max\_entries   | 100000                              | 磁盘词典最大条目                                           |
-| proxy.translation\_timeout | 600                                 | 翻译等待超时 ms，0 无限                                     |
-| proxy.glossary\_dir        | \~/.local/share/lsp-proxy/glossary/ | 词汇本目录                                              |
+| proxy.cache\_size          | 30                                  | 内存 LRU 上限 MB                                   |
+| proxy.dict\_max\_entries   | 100000                              | 磁盘词典最大条目                                   |
+| proxy.translation\_timeout | 600                                 | 翻译等待超时 ms，0 无限                            |
+| proxy.glossary\_dir        | \~/.local/share/lsp-proxy/glossary/ | 词汇本目录                                         |
 | log.level                  | info                                | debug/info/warn/error                              |
 
 默认路径：config \~/.config/lsp-proxy/config.yaml，dict \~/.local/share/lsp-proxy/dict.json，log \~/.local/share/lsp-proxy/proxy.log。

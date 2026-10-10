@@ -1010,6 +1010,9 @@ func (h *Handler) translateCompletion(ctx context.Context, result json.RawMessag
 
 // translateCompletionItems 原地翻译补全条目列表中的文档字段。
 // 返回（成功翻译数, 有文档的总数）。
+//
+// Detail 有意不翻译：它显示在补全列表每一行，逐条请求对延迟敏感，
+// 且内容多为类型签名，翻译收益低并有被 AI 引擎改写的风险。
 func (h *Handler) translateCompletionItems(ctx context.Context, items []CompletionItem) (translated, total int) {
 	for i := range items {
 		if len(items[i].Documentation) == 0 {
@@ -1043,19 +1046,38 @@ func (h *Handler) translateSignatureHelp(ctx context.Context, result json.RawMes
 
 	translated := 0
 	for i := range sigHelp.Signatures {
-		if len(sigHelp.Signatures[i].Documentation) == 0 {
-			continue
+		sig := &sigHelp.Signatures[i]
+		if len(sig.Documentation) != 0 {
+			translatedDoc, err := h.translateMarkupContent(ctx, sig.Documentation)
+			if err != nil {
+				h.logger.Warn("翻译签名文档失败",
+					slog.String("label", sig.Label),
+					slog.String("error", err.Error()),
+				)
+			} else {
+				sig.Documentation = translatedDoc
+				translated++
+			}
 		}
-		translatedDoc, err := h.translateMarkupContent(ctx, sigHelp.Signatures[i].Documentation)
-		if err != nil {
-			h.logger.Warn("翻译签名文档失败",
-				slog.String("label", sigHelp.Signatures[i].Label),
-				slog.String("error", err.Error()),
-			)
-			continue
+
+		// 参数文档（ParameterInformation.documentation）同样展示给用户；
+		// Label 保持原样（可为 UTF-16 偏移对或签名内定位文本）
+		for j := range sig.Parameters {
+			param := &sig.Parameters[j]
+			if len(param.Documentation) == 0 {
+				continue
+			}
+			translatedParam, err := h.translateMarkupContent(ctx, param.Documentation)
+			if err != nil {
+				h.logger.Warn("翻译签名参数文档失败",
+					slog.String("label", sig.Label),
+					slog.Int("param", j),
+					slog.String("error", err.Error()),
+				)
+				continue
+			}
+			param.Documentation = translatedParam
 		}
-		sigHelp.Signatures[i].Documentation = translatedDoc
-		translated++
 	}
 
 	h.logger.Debug("签名帮助翻译",

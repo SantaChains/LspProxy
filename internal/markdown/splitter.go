@@ -309,15 +309,16 @@ func protectTechTerms(masked string, codes []string) (string, []string) {
 }
 
 // Protect 将文本中的所有代码块、编程技术术语、Markdown 链接 URL、
-// 自动链接 URL 以及行内 HTML 标签替换为编号占位符。
+// 自动链接 URL、裸 URL 以及行内 HTML 标签替换为编号占位符。
 //
 // 处理顺序：
 //  1. 代码块（围栏块、行内代码）→ $CODE_N$
 //  2. 编程技术术语（panic/throws/raises）→ $CODE_N$
-//  3. 标准 Markdown 链接的 URL → $CODE_N$（链接文字可翻译）
+//  3. 标准 Markdown 链接的 URL → $CODE_N$（链接文字与 title 可翻译/保留）
 //  4. 自动链接 <url> → $CODE_N$
 //  5. 行内 HTML 标签 → $CODE_N$
 //  6. reference-style 链接定义的 URL → $CODE_N$
+//  7. 裸 URL（无语法包裹的直接 URL 文本）→ $CODE_N$
 //
 // 返回 codes 切片按编号顺序存储所有被提取的原文，Restore 时按序号还原。
 func Protect(text string) (masked string, codes []string) {
@@ -353,13 +354,20 @@ func Protect(text string) (masked string, codes []string) {
 	// [ref]: https://example.com 中的 URL
 	masked, codes = protectRefDefURLs(masked, codes)
 
+	// ── 第七步：保护裸 URL（最后执行）──
+	// 不带任何语法包裹、直接出现在文本中的 https://... 链接。
+	// 必须在链接/autolink/ref-def/HTML 层之后：那些层已把各自 URL
+	// 占位符化（$CODE_N$ 不含 ://），此处命中的才是真正的裸 URL。
+	masked, codes = protectBareURLs(masked, codes)
+
 	return masked, codes
 }
 
 // markdownLinkRe 匹配 Markdown 链接和图片的 URL 部分。
-var markdownLinkRe = regexp.MustCompile(`(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)`)
+var markdownLinkRe = regexp.MustCompile(`(!?)\[([^\]]*)\]\(([^)\s]+)(\s+"[^"]*")?\)`)
 
-// protectMarkdownURLs 将 Markdown 标准链接 [text](url) 和 ![alt](url) 中的 URL 替换为占位符。
+// protectMarkdownURLs 将 Markdown 标准链接 [text](url "title") 和 ![alt](url) 中的
+// URL 替换为占位符，title 原样保留（title 也是可读文本，但删除会破坏链接结构）。
 func protectMarkdownURLs(masked string, codes []string) (string, []string) {
 	return markdownLinkRe.ReplaceAllStringFunc(masked, func(match string) string {
 		sub := markdownLinkRe.FindStringSubmatch(match)
@@ -369,10 +377,11 @@ func protectMarkdownURLs(masked string, codes []string) (string, []string) {
 		prefix := sub[1] // "!" 表示图片
 		text := sub[2]   // 链接文字（保留，可翻译）
 		url := sub[3]    // URL（保护）
+		title := sub[4]  // 可选 title（保留）
 
 		idx := len(codes)
 		codes = append(codes, url)
-		return fmt.Sprintf("%s[%s]($CODE_%d$)", prefix, text, idx)
+		return fmt.Sprintf("%s[%s]($CODE_%d$%s)", prefix, text, idx, title)
 	}), codes
 }
 
@@ -392,6 +401,20 @@ func protectAutolinks(masked string, codes []string) (string, []string) {
 		idx := len(codes)
 		codes = append(codes, sub[1])
 		return fmt.Sprintf("<$CODE_%d$>", idx)
+	}), codes
+}
+
+// bareURLRe 匹配裸 URL（不带尖括号或链接语法的直接 URL 文本）。
+// 末字符限定为非标点，避免吞掉句尾的逗号/句号；括号与空白自然截断。
+// 在 autolink 层之后执行，此时 <url> 与 [text](url) 内的 URL 已占位符化，不会重复匹配。
+var bareURLRe = regexp.MustCompile(`https?://[^\s<>"]+[a-zA-Z0-9/_#%?=&\-~]`)
+
+// protectBareURLs 将裸 URL 替换为占位符，防止翻译引擎改写 URL 路径参数。
+func protectBareURLs(masked string, codes []string) (string, []string) {
+	return bareURLRe.ReplaceAllStringFunc(masked, func(match string) string {
+		idx := len(codes)
+		codes = append(codes, match)
+		return fmt.Sprintf("$CODE_%d$", idx)
 	}), codes
 }
 

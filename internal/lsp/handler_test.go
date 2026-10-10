@@ -119,5 +119,74 @@ func TestTranslateDiagnostics_NoRelatedInformation(t *testing.T) {
 	}
 }
 
+// TestTranslateCompletionItems_DetailUntouched 验证 detail 有意保持原样，
+// 仅翻译 documentation（detail 在补全列表逐行显示，翻译延迟不可接受）
+func TestTranslateCompletionItems_DetailUntouched(t *testing.T) {
+	h := newTestHandler()
+
+	items := []CompletionItem{
+		{Label: "foo", Detail: "This is a description", Documentation: json.RawMessage(`"Some docs"`)},
+		{Label: "bar", Detail: "fn bar(x: i32) -> i32"},
+		{Label: "baz"},
+	}
+
+	translated, total := h.translateCompletionItems(context.Background(), items)
+	if total != 1 {
+		t.Errorf("总数错误: got %d want 1", total)
+	}
+	if translated != 1 {
+		t.Errorf("翻译数错误: got %d want 1", translated)
+	}
+	if items[0].Detail != "This is a description" {
+		t.Errorf("detail 应保持原样: %q", items[0].Detail)
+	}
+	if string(items[0].Documentation) != `"[译] Some docs"` {
+		t.Errorf("documentation 未翻译: %s", items[0].Documentation)
+	}
+	if items[1].Detail != "fn bar(x: i32) -> i32" {
+		t.Errorf("纯代码 detail 应保持原样: %q", items[1].Detail)
+	}
+}
+
+// TestTranslateSignatureHelp_Parameters 验证签名参数文档翻译且 Label 保真
+func TestTranslateSignatureHelp_Parameters(t *testing.T) {
+	h := newTestHandler()
+
+	result := json.RawMessage(`{
+		"signatures": [{
+			"label": "fn foo(x: i32, y: &str)",
+			"documentation": "Docs about foo",
+			"parameters": [
+				{"label": [7, 13], "documentation": "the input number"},
+				{"label": "y: &str"}
+			]
+		}]
+	}`)
+
+	out, err := h.translateSignatureHelp(context.Background(), result)
+	if err != nil {
+		t.Fatalf("translateSignatureHelp 失败: %v", err)
+	}
+
+	var got SignatureHelp
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("解析输出失败: %v", err)
+	}
+
+	sig := got.Signatures[0]
+	if sig.Label != "fn foo(x: i32, y: &str)" {
+		t.Errorf("签名 Label 被改动: %q", sig.Label)
+	}
+	if !json.Valid(json.RawMessage(sig.Parameters[0].Label)) || string(sig.Parameters[0].Label) != "[7,13]" {
+		t.Errorf("参数偏移对 Label 被改动: %s", sig.Parameters[0].Label)
+	}
+	if want := `"[译] the input number"`; string(sig.Parameters[0].Documentation) != want {
+		t.Errorf("参数文档未翻译: %s", sig.Parameters[0].Documentation)
+	}
+	if sig.Parameters[1].Documentation != nil {
+		t.Errorf("无文档参数不应新增 documentation: %s", sig.Parameters[1].Documentation)
+	}
+}
+
 // 编译期接口断言
 var _ translate.Engine = stubEngine{}
