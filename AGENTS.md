@@ -45,7 +45,7 @@ go fmt ./...
 | internal/glossary/  | 术语词汇本（全局 + LSP 专属，含 builtin 内嵌词库） | 依赖 config              |
 | internal/lsp/       | JSON-RPC 协议实现                                  | 不知道翻译               |
 | internal/translate/ | 翻译引擎与缓存                                     | 不知道 LSP 协议          |
-| internal/markdown/  | 文本分割                                           | 零外部依赖               |
+| internal/markdown/  | 文本分割与占位符保护（七层 Protect + 术语层）      | 零外部依赖               |
 | internal/proxy/     | 流程编排，组合所有组件                             | 可依赖所有内部包         |
 | tui/                | 界面展示                                           | 调用 config、glossary 包 |
 
