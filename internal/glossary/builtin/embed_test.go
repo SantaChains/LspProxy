@@ -172,6 +172,42 @@ func TestExtract_RustAnalyzerContent(t *testing.T) {
 	}
 }
 
+// TestExtract_TypeScriptLSContent 验证内嵌的 typescript-language-server.toml 内容可被解析。
+func TestExtract_TypeScriptLSContent(t *testing.T) {
+	// 直接从 embed.FS 读取内嵌内容
+	data, err := builtin.FS.ReadFile("typescript-language-server.toml")
+	if err != nil {
+		t.Fatalf("读取内嵌 typescript-language-server.toml 失败: %v", err)
+	}
+
+	content := string(data)
+
+	// 验证包含 [terms] 节
+	if !contains(content, "[terms]") {
+		t.Error("typescript-language-server.toml 缺少 [terms] 节")
+	}
+
+	// 验证包含一些核心的 TS/JS 术语（翻译类 + 护盾类）
+	expectedTerms := []string{
+		"type inference",
+		"type narrowing",
+		"discriminated union",
+		"declaration merging",
+		"arrow function",
+		"event loop",
+		"decorator",
+		"Promise",
+		"undefined",
+		"Record",
+		"TypeScript",
+	}
+	for _, term := range expectedTerms {
+		if !contains(content, "\""+term+"\"") {
+			t.Errorf("typescript-language-server.toml 缺少核心术语 %q", term)
+		}
+	}
+}
+
 // TestFS_ReadDir 验证内嵌的 FS 可正常读取目录。
 func TestFS_ReadDir(t *testing.T) {
 	entries, err := builtin.FS.ReadDir(".")

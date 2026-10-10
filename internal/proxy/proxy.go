@@ -207,6 +207,25 @@ func resolveRealLSP(command string) (string, error) {
 	return "", fmt.Errorf("未找到 LSP 可执行文件 %q", command)
 }
 
+// RunPassthrough 以直通模式运行真实 LSP：继承本进程的标准输入输出，透传退出码。
+//
+// 编辑器在启动 LSP 服务器前，常以 "<server> --version" 探测二进制可用性，
+// 并在 stdin 管道保持打开的情况下等待进程退出。代理模式会在子进程退出后
+// 继续等待客户端 stdin 关闭，导致此类探测永久挂起。直通模式完全绕过代理
+// 生命周期，使探测行为与真实 LSP 一致：立即输出、立即退出。
+func RunPassthrough(command string, args []string) error {
+	real, err := resolveRealLSP(command)
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command(real, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 // samePath 判断两个目录路径是否指向同一位置（容忍大小写与斜杠差异）。
 func samePath(a, b string) bool {
 	if a == "" || b == "" {

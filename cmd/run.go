@@ -94,6 +94,25 @@ func runProxy(cmd *cobra.Command, args []string) error {
 	lspCommand := args[0]
 	lspArgs := args[1:]
 
+	// ── 5.5 探测直通：--version/--help 不走代理生命周期 ──────────────────
+	// 编辑器以 "<server> --version" 探测可用性时，stdin 管道保持打开并等待
+	// 进程退出；代理模式会在子进程退出后继续等待客户端 stdin 关闭而挂起，
+	// 导致探测永不返回、服务器永不启动。此处直接透传真实 LSP。
+	if len(lspArgs) > 0 {
+		switch lspArgs[0] {
+		case "--version", "-V", "--help", "-h":
+			if err := proxy.RunPassthrough(lspCommand, lspArgs); err != nil {
+				// 透传真实 LSP 的退出码，探测失败时编辑器据此判定二进制不可用
+				var ec exitCoder
+				if errors.As(err, &ec) {
+					os.Exit(ec.ExitCode())
+				}
+				return err
+			}
+			return nil
+		}
+	}
+
 	// ── 6. 初始化文件日志（严禁写入 stdout，否则污染 LSP 协议）────────────
 	logger, logFile, err := buildFileLogger(cfg)
 	if err != nil {

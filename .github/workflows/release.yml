@@ -3,14 +3,13 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
 
 jobs:
   build:
-    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -31,14 +30,11 @@ jobs:
             ext: .exe
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
 
       - name: Build
         env:
@@ -46,58 +42,34 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
-          BINARY_NAME="LspProxy-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
-          COMMIT=$(git rev-parse --short HEAD)
-          DATE=$(date -u +%Y-%m-%d)
           go build -trimpath \
             -ldflags="-s -w \
               -X main.version=${{ github.ref_name }} \
-              -X main.commit=${COMMIT} \
-              -X main.date=${DATE}" \
-            -o "${BINARY_NAME}" .
+              -X main.commit=$(git rev-parse --short HEAD) \
+              -X main.date=$(date -u +%Y-%m-%d)" \
+            -o "LspProxy-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" .
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: LspProxy-${{ matrix.goos }}-${{ matrix.goarch }}
           path: LspProxy-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
           retention-days: 1
 
   release:
-    name: Create Release
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Get tag message
-        id: tag_msg
-        run: |
-          body=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$body" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - run: git tag -l --format='%(contents)' ${GITHUB_REF_NAME} > tag.md
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
-
-      - name: Create checksums
-        run: |
-          cd artifacts
-          sha256sum LspProxy-* > SHA256SUMS.txt
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - run: cd artifacts && sha256sum LspProxy-* > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
         with:
-          body: ${{ steps.tag_msg.outputs.body }}
+          body_path: tag.md
           files: |
             artifacts/LspProxy-*
             artifacts/SHA256SUMS.txt
-          draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}

@@ -139,6 +139,11 @@ lspconfig.<span class="syntax-var">gopls</span>.<span class="syntax-func">setup<
 <span class="syntax-comment">-- C/C++</span>
 lspconfig.<span class="syntax-var">clangd</span>.<span class="syntax-func">setup</span>({
   <span class="syntax-var">cmd</span> = { <span class="syntax-string">&quot;LspProxy&quot;</span>, <span class="syntax-string">&quot;--&quot;</span>, <span class="syntax-string">&quot;clangd&quot;</span> },
+})
+
+<span class="syntax-comment">-- TypeScript / JavaScript</span>
+lspconfig.<span class="syntax-var">ts_ls</span>.<span class="syntax-func">setup</span>({
+  <span class="syntax-var">cmd</span> = { <span class="syntax-string">&quot;LspProxy&quot;</span>, <span class="syntax-string">&quot;--&quot;</span>, <span class="syntax-string">&quot;typescript-language-server&quot;</span>, <span class="syntax-string">&quot;--stdio&quot;</span> },
 })</code>`;
 
 const codeVscodeScript = `<code>#!/bin/sh
@@ -807,7 +812,8 @@ after this call.</span>
               <pre class="p-3 text-xs font-mono leading-relaxed" style="color: var(--text-muted);">glossary/
 ├── _global.toml          # 全局词汇本，对所有 LSP 生效
 ├── rust-analyzer.toml    # rust-analyzer 专属
-└── clangd.toml           # clangd 专属</pre>
+├── clangd.toml           # clangd 专属
+└── typescript-language-server.toml  # TS/JS 专属</pre>
             </div>
           </div>
 

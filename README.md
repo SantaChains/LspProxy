@@ -25,13 +25,13 @@
 
 ### 翻译覆盖范围
 
-| LSP 消息                            | 字段              | 说明               |
-| --------------------------------- | --------------- | ---------------- |
-| `textDocument/hover`              | `contents`      | 悬停文档             |
-| `textDocument/completion`         | `documentation` | 补全项说明            |
-| `textDocument/signatureHelp`      | `documentation` | 签名提示             |
-| `textDocument/publishDiagnostics` | `message`       | 诊断消息             |
-| `completionItem/resolve`          | `documentation` | 补全项解析            |
+| LSP 消息                          | 字段            | 说明                    |
+|-----------------------------------|-----------------|-------------------------|
+| `textDocument/hover`              | `contents`      | 悬停文档                |
+| `textDocument/completion`         | `documentation` | 补全项说明              |
+| `textDocument/signatureHelp`      | `documentation` | 签名提示                |
+| `textDocument/publishDiagnostics` | `message`       | 诊断消息                |
+| `completionItem/resolve`          | `documentation` | 补全项解析              |
 | `textDocument/diagnostic`         | `message`       | 拉取式诊断（LSP 3.17+） |
 
 ***
@@ -97,13 +97,13 @@ LspProxy --tui
 
 ### 命令行标志
 
-| 标志                | 简写     | 说明                                           |
-| ----------------- | ------ | -------------------------------------------- |
+| 标志              | 简写   | 说明                                                   |
+|-------------------|--------|--------------------------------------------------------|
 | `--config <path>` | <br /> | 配置文件路径（默认 `~/.config/lsp-proxy/config.yaml`） |
-| `--engine <name>` | `-e`   | 覆盖翻译引擎：`google` \| `openai`                  |
-| `--tui`           | <br /> | 启动 TUI 管理界面                                  |
-| `--version`       | `-v`   | 显示版本信息                                       |
-| `--help`          | `-h`   | 显示帮助                                         |
+| `--engine <name>` | `-e`   | 覆盖翻译引擎：`google` \| `openai`                     |
+| `--tui`           | <br /> | 启动 TUI 管理界面                                      |
+| `--version`       | `-v`   | 显示版本信息                                           |
+| `--help`          | `-h`   | 显示帮助                                               |
 
 ***
 
@@ -126,6 +126,14 @@ clangd 示例：
 ```lua
 require('lspconfig').clangd.setup({
   cmd = { 'LspProxy', '--', 'clangd' },
+})
+```
+
+TypeScript / JavaScript 示例（typescript-language-server 内置 TS/JS 专属词汇本）：
+
+```lua
+require('lspconfig').ts_ls.setup({
+  cmd = { 'LspProxy', '--', 'typescript-language-server', '--stdio' },
 })
 ```
 
@@ -208,12 +216,12 @@ log:
 
 ### 翻译引擎
 
-| 引擎         | 密钥 | 适用场景     |
-| ---------- | -- | -------- |
+| 引擎           | 密钥 | 适用场景         |
+|----------------|------|------------------|
 | Google（默认） | 无需 | 日常使用，零配置 |
-| OpenAI     | 需要 | 复杂文档，高质量 |
-| DeepSeek   | 需要 | 高性价比     |
-| Ollama（本地） | 无需 | 离线 / 隐私  |
+| OpenAI         | 需要 | 复杂文档，高质量 |
+| DeepSeek       | 需要 | 高性价比         |
+| Ollama（本地） | 无需 | 离线 / 隐私      |
 
 使用 DeepSeek：
 
@@ -243,13 +251,13 @@ translate:
 
 `LspProxy --tui` 启动可视化管理界面，提供状态、配置、日志、提示词、词典、词汇本六个标签页。
 
-| 快捷键                 | 功能       |
-| ------------------- | -------- |
-| `1`–`6`             | 切换标签页    |
+| 快捷键              | 功能             |
+|---------------------|------------------|
+| `1`–`6`             | 切换标签页       |
 | `Tab` / `↑↓`        | 配置表单字段导航 |
-| `Ctrl+S`            | 保存配置     |
-| `j/k/PgUp/PgDn/g/G` | 日志滚动     |
-| `q` / `Ctrl+C`      | 退出       |
+| `Ctrl+S`            | 保存配置         |
+| `j/k/PgUp/PgDn/g/G` | 日志滚动         |
+| `q` / `Ctrl+C`      | 退出             |
 
 ***
 
